@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
+
+	"github.com/cbaumont/nina/internal/tui"
 )
 
 const version = "0.0.1-skeleton"
@@ -27,7 +30,14 @@ func run(args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("start requires a learning goal, e.g. nina start \"learn Python basics\"")
 		}
-		return fmt.Errorf("start is not implemented yet")
+		if os.Getenv("ANTHROPIC_API_KEY") == "" {
+			return fmt.Errorf("ANTHROPIC_API_KEY is not set; export your API key first")
+		}
+		dir, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		return tui.Run(strings.Join(args[1:], " "), dir)
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", args[0])
