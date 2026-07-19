@@ -51,21 +51,62 @@ func TestTurnFromMessage(t *testing.T) {
 	}
 }
 
-func TestConversationBuilding(t *testing.T) {
+func testConversation() *Conversation {
 	conv := &Conversation{System: "system prompt"}
 	conv.AddUser("hello")
+	conv.addAssistantTurn(Turn{
+		Text:      "Writing a file.",
+		ToolCalls: []ToolCall{{ID: "toolu_1", Name: ToolWriteFile, Input: json.RawMessage(`{"path":"main.py","content":"x"}`)}},
+	})
 	conv.AddToolResults([]ToolResult{{ToolCallID: "toolu_1", Content: "denied", IsError: true}})
+	return conv
+}
 
-	if len(conv.Messages) != 2 {
-		t.Fatalf("messages = %d", len(conv.Messages))
+func TestAnthropicMessageConversion(t *testing.T) {
+	params := anthropicMessages(testConversation())
+	if len(params) != 3 {
+		t.Fatalf("messages = %d", len(params))
 	}
-	raw, err := json.Marshal(conv.Messages[1])
+	raw, err := json.Marshal(params)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"tool_result", "toolu_1", "denied"} {
-		if !strings.Contains(string(raw), want) {
-			t.Errorf("tool result message missing %q:\n%s", want, raw)
+	wire := string(raw)
+	for _, want := range []string{
+		`"hello"`,
+		`"tool_use"`, `"toolu_1"`, `"write_file"`, `"main.py"`,
+		`"tool_result"`, `"denied"`, `"is_error":true`,
+		`"role":"assistant"`,
+	} {
+		if !strings.Contains(wire, want) {
+			t.Errorf("wire missing %s:\n%s", want, wire)
 		}
+	}
+}
+
+func TestAnthropicToolConversion(t *testing.T) {
+	tools := anthropicTools()
+	if len(tools) != 3 {
+		t.Fatalf("tools = %d", len(tools))
+	}
+	raw, err := json.Marshal(tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(raw)
+	for _, want := range []string{ToolWriteFile, ToolSetPlan, ToolSubmitReview, `"required":["path","content"]`, `"input_schema"`} {
+		if !strings.Contains(wire, want) {
+			t.Errorf("wire missing %s:\n%s", want, wire)
+		}
+	}
+}
+
+func TestToolNameFor(t *testing.T) {
+	conv := testConversation()
+	if name := conv.toolNameFor("toolu_1"); name != ToolWriteFile {
+		t.Errorf("toolNameFor = %q", name)
+	}
+	if name := conv.toolNameFor("missing"); name != "" {
+		t.Errorf("toolNameFor(missing) = %q", name)
 	}
 }

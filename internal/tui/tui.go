@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -21,8 +22,12 @@ func Run(goal, dir string) error {
 	if err != nil {
 		return err
 	}
+	client, err := llm.NewAnthropic(os.Getenv("NINA_MODEL"))
+	if err != nil {
+		return err
+	}
 	events := make(chan engine.Event, 64)
-	eng := engine.New(llm.NewAnthropic(), ws, dir, func(ev engine.Event) {
+	eng := engine.New(client, ws, dir, func(ev engine.Event) {
 		events <- ev
 	})
 	program := tea.NewProgram(newModel(eng, events, goal), tea.WithAltScreen())
