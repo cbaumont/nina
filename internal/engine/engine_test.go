@@ -64,9 +64,13 @@ func newTestEngine(t *testing.T, turns []llm.Turn) (*Engine, string, *[]Event) {
 	return eng, dir, events
 }
 
+// startedEngine drives a session through propose and scaffold into the
+// drive state: Start proposes ideas, then the learner's pick triggers
+// plan + scaffold.
 func startedEngine(t *testing.T, extraTurns []llm.Turn) (*Engine, string, *[]Event) {
 	t.Helper()
 	turns := append([]llm.Turn{
+		{Text: "Idea 1: a guessing game. Idea 2: a dice roller. Which one?", StopReason: "end_turn"},
 		{ToolCalls: []llm.ToolCall{
 			planCall(t),
 			toolCall(t, llm.ToolWriteFile, llm.WriteFileInput{Path: "main.py", Content: "# stub\n"}),
@@ -77,7 +81,35 @@ func startedEngine(t *testing.T, extraTurns []llm.Turn) (*Engine, string, *[]Eve
 	if err := eng.Start(context.Background(), "learn python"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
+	if err := eng.UserMessage(context.Background(), "the guessing game"); err != nil {
+		t.Fatalf("choosing a project: %v", err)
+	}
 	return eng, dir, events
+}
+
+func TestStartProposesBeforeScaffolding(t *testing.T) {
+	eng, dir, _ := newTestEngine(t, []llm.Turn{
+		{Text: "Idea 1 or idea 2?", StopReason: "end_turn"},
+	})
+	if err := eng.Start(context.Background(), "learn python"); err != nil {
+		t.Fatal(err)
+	}
+	if eng.State() != StatePropose || len(eng.Plan().Steps) != 0 {
+		t.Errorf("state = %s, plan = %+v", eng.State(), eng.Plan())
+	}
+	entries, _ := os.ReadDir(dir)
+	for _, entry := range entries {
+		if entry.Name() != ".git" && entry.Name() != ".nina" {
+			t.Errorf("file scaffolded during propose: %s", entry.Name())
+		}
+	}
+	// A reply that still doesn't pick keeps proposing.
+	if err := eng.UserMessage(context.Background(), "something else?"); err != nil {
+		t.Fatal(err)
+	}
+	if eng.State() != StatePropose {
+		t.Errorf("state = %s after non-choice reply", eng.State())
+	}
 }
 
 func TestStartScaffoldsAndPlans(t *testing.T) {
@@ -362,6 +394,31 @@ func TestSnapshotsExcludeNinaDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".nina", "session.json")); err != nil {
 		t.Fatalf("expected session state on disk: %v", err)
+	}
+}
+
+func TestSummarizeWritesFile(t *testing.T) {
+	eng, dir, events := startedEngine(t, []llm.Turn{
+		{Text: "You built a guessing game and learned about input().", StopReason: "end_turn"},
+	})
+
+	if err := eng.Summarize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := filepath.Glob(filepath.Join(dir, ".nina", "summary-*.md"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("summary files = %v, err = %v", entries, err)
+	}
+	raw, err := os.ReadFile(entries[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "guessing game") {
+		t.Errorf("summary = %q", raw)
+	}
+	last := (*events)[len(*events)-1]
+	if last.Kind != EventInfo || !strings.Contains(last.Text, "Summary saved") {
+		t.Errorf("last event = %+v", last)
 	}
 }
 

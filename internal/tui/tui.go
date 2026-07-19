@@ -117,7 +117,7 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		goal:       goal,
 		input:      input,
 		busy:       true,
-		busyLabel:  "setting up your learning project",
+		busyLabel:  "brainstorming project ideas",
 		nudgedStep: -1,
 	}
 	if needSetup {
@@ -133,9 +133,13 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		m.stepIndex = eng.StepIndex()
 		m.busy = false
 		m.busyLabel = ""
-		step := plan.Steps[m.stepIndex]
-		m.history = fmt.Sprintf("## %s\n\n▶️ **Session resumed** at step %d/%d: %s\n\nStep goal: %s\n\nKeep working in your editor and `/done` when ready — or ask Nina to remind you where you left off.\n",
-			plan.Title, m.stepIndex+1, m.stepCount, step.Title, step.Goal)
+		if m.stepIndex < len(plan.Steps) {
+			step := plan.Steps[m.stepIndex]
+			m.history = fmt.Sprintf("## %s\n\n▶️ **Session resumed** at step %d/%d: %s\n\nStep goal: %s\n\nKeep working in your editor and `/done` when ready — or ask Nina to remind you where you left off.\n",
+				plan.Title, m.stepIndex+1, m.stepCount, step.Title, step.Goal)
+		} else {
+			m.history = "▶️ **Session resumed** — you were still choosing a project. Ask Nina to repeat the ideas, or tell it what you'd like to build.\n"
+		}
 	}
 	return m
 }
@@ -226,7 +230,7 @@ func (m *model) handleSetup(text string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.busy = true
-	m.busyLabel = "setting up your learning project"
+	m.busyLabel = "brainstorming project ideas"
 	m.refreshViewport()
 	return m, m.runOp(func() error {
 		return m.eng.Start(context.Background(), m.goal)
@@ -267,6 +271,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case engineEventMsg:
 		m.handleEvent(engine.Event(msg))
 		m.refreshViewport()
+		if engine.Event(msg).Kind == engine.EventSessionDone {
+			m.busy = true
+			m.busyLabel = "writing your session summary"
+			return m, tea.Batch(m.waitForEvent(), m.runOp(func() error {
+				return m.eng.Summarize(context.Background())
+			}))
+		}
 		return m, m.waitForEvent()
 
 	case opDoneMsg:
@@ -355,6 +366,12 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 	case "/recap":
 		return m.sendToNina("`"+text+"`", "recapping",
 			"Recap the session so far: what we've built, the concepts covered, and how the pieces fit together.")
+	case "/summary":
+		m.busy = true
+		m.busyLabel = "writing your session summary"
+		m.history += "\n---\n\n`/summary`\n"
+		m.refreshViewport()
+		return m, m.runOp(func() error { return m.eng.Summarize(context.Background()) })
 	case "/profile":
 		m.setup = &setupFlow{prof: m.eng.Profile(), editing: true}
 		m.history += "\n> Adjust your profile — press Enter to keep any current value.\n" + setupQuestion(0, m.setup.prof)
@@ -365,7 +382,7 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	case "/help":
-		m.history += "\n> **Commands:** `/done` review the step · `/why` zoom out · `/stuck` get help · `/skip` next step · `/recap` session recap · `/run [cmd]` run code · `/dial <0-3>` typing dial · `/profile` adjust profile · `/quit`\n"
+		m.history += "\n> **Commands:** `/done` review the step · `/why` zoom out · `/stuck` get help · `/skip` next step · `/recap` session recap · `/run [cmd]` run code · `/summary` session summary · `/dial <0-3>` typing dial · `/profile` adjust profile · `/quit`\n"
 		m.refreshViewport()
 		return m, nil
 	default:

@@ -20,6 +20,7 @@ type State string
 
 const (
 	StateIdle     State = "idle"
+	StatePropose  State = "propose"
 	StateScaffold State = "scaffold"
 	StateDrive    State = "drive"
 	StateDone     State = "done"
@@ -158,27 +159,20 @@ func (e *Engine) persist() {
 	}
 }
 
+// Start opens the session by proposing 2-3 project ideas. Scaffolding
+// waits until the learner picks one (see UserMessage).
 func (e *Engine) Start(ctx context.Context, goal string) error {
 	if e.state != StateIdle {
 		return fmt.Errorf("session already started")
 	}
-	e.state = StateScaffold
+	e.state = StatePropose
 	e.goal = goal
-	e.conv.AddUser(startPrompt(goal))
+	e.conv.AddUser(proposePrompt(goal))
 	if _, err := e.converseLoop(ctx); err != nil {
 		e.state = StateIdle
 		return err
 	}
-	if len(e.plan.Steps) == 0 {
-		e.state = StateIdle
-		return fmt.Errorf("the model did not produce a task plan; try rephrasing the goal")
-	}
-	if err := e.snapshot(); err != nil {
-		return err
-	}
-	e.state = StateDrive
 	e.persist()
-	e.emit(Event{Kind: EventStepStarted, Step: e.stepIndex})
 	return nil
 }
 
@@ -262,11 +256,52 @@ func (e *Engine) UserMessage(ctx context.Context, text string) error {
 		return fmt.Errorf("session not started")
 	}
 	e.conv.AddUser(text)
-	_, err := e.converseLoop(ctx)
-	if err == nil {
-		e.persist()
+	if _, err := e.converseLoop(ctx); err != nil {
+		return err
 	}
-	return err
+	// set_plan during the propose phase moves us to scaffold (see
+	// execSetPlan); once the model finishes scaffolding in that same
+	// turn, baseline the workspace and hand the keyboard to the learner.
+	if e.state == StateScaffold {
+		if len(e.plan.Steps) == 0 {
+			e.state = StatePropose
+		} else {
+			if err := e.snapshot(); err != nil {
+				return err
+			}
+			e.state = StateDrive
+			e.emit(Event{Kind: EventStepStarted, Step: e.stepIndex})
+		}
+	}
+	e.persist()
+	return nil
+}
+
+// Summarize asks the navigator for an end-of-session learning summary
+// and saves it under .nina/ as a keepsake artifact.
+func (e *Engine) Summarize(ctx context.Context) error {
+	if e.state == StateIdle {
+		return fmt.Errorf("session not started")
+	}
+	e.conv.AddUser(summaryPrompt())
+	turn, err := e.converseLoop(ctx)
+	if err != nil {
+		return err
+	}
+	e.persist()
+	if strings.TrimSpace(turn.Text) == "" {
+		return nil
+	}
+	name := "summary-" + e.sessionID + ".md"
+	path := filepath.Join(e.dir, ".nina", name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(turn.Text+"\n"), 0o644); err != nil {
+		return err
+	}
+	e.emit(Event{Kind: EventInfo, Text: "Summary saved to `.nina/" + name + "`"})
+	return nil
 }
 
 func (e *Engine) converseLoop(ctx context.Context) (llm.Turn, error) {
@@ -434,6 +469,9 @@ func (e *Engine) execWriteFile(call llm.ToolCall) llm.ToolResult {
 }
 
 func (e *Engine) execSetPlan(call llm.ToolCall) llm.ToolResult {
+	if e.state != StatePropose && e.state != StateScaffold {
+		return llm.ToolResult{ToolCallID: call.ID, Content: "the session already has a plan; revise the remaining steps with update_plan instead", IsError: true}
+	}
 	var input llm.SetPlanInput
 	if err := json.Unmarshal(call.Input, &input); err != nil {
 		return llm.ToolResult{ToolCallID: call.ID, Content: "invalid set_plan input: " + err.Error(), IsError: true}
@@ -442,6 +480,9 @@ func (e *Engine) execSetPlan(call llm.ToolCall) llm.ToolResult {
 		return llm.ToolResult{ToolCallID: call.ID, Content: "a plan needs at least one step", IsError: true}
 	}
 	e.plan = Plan{Title: input.Title, Steps: input.Steps}
+	if e.state == StatePropose {
+		e.state = StateScaffold
+	}
 	e.emit(Event{Kind: EventPlanSet, Plan: &e.plan})
 	return llm.ToolResult{ToolCallID: call.ID, Content: fmt.Sprintf("plan set with %d steps", len(input.Steps))}
 }

@@ -40,13 +40,17 @@ mkdir learn-python && cd learn-python
 nina start "learn Python basics"
 ```
 
-Nina proposes a tiny project, scaffolds it, and gives you the first step. Then loop:
+On first run Nina asks a few quick profile questions (experience, how much she may type, how fast hints escalate). She then proposes 2–3 project ideas; pick one and she checks your environment, scaffolds the project, and gives you the first step. Then loop:
 
 1. Write the code in your own editor.
-2. Type `/done` — Nina diffs what you wrote and reviews it against the step's goal.
+2. Type `/done` — Nina diffs what you wrote, runs it or its tests where possible, and reviews it against the step's goal.
 3. Pass → next step. Not quite → a Socratic nudge, try again.
 
-Type anything else to ask Nina a question mid-step. `/quit` exits.
+Type anything else to ask Nina a question mid-step. Sessions save to `.nina/` — `nina resume` continues an interrupted one, and finishing (or `/summary`) writes a learning recap there.
+
+**Commands:** `/done` · `/why` · `/stuck` · `/skip` · `/recap` · `/run [cmd]` · `/summary` · `/dial <0-3>` · `/profile` · `/help` · `/quit`
+
+**The typing dial** is a ceiling on what Nina may write, enforced by the engine: `0` nothing, `1` project scaffold only (default), `2` + boilerplate, `3` collaborative. At levels 0–1 a fast model additionally screens Nina's messages so she doesn't paste the solution into chat.
 
 ## Configuration
 

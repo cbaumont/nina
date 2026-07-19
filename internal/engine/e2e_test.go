@@ -30,6 +30,11 @@ func TestEndToEndAgainstRealModel(t *testing.T) {
 	var events []Event
 	eng := New(client, ws, dir, profile.Default(), func(ev Event) {
 		events = append(events, ev)
+		if ev.Kind == EventConfirm {
+			t.Logf("auto-approving command: %s", ev.Confirm.Command)
+			ev.Confirm.Reply <- ConfirmAnswer{Approve: true}
+			return
+		}
 		if ev.Kind != EventTextDelta {
 			t.Logf("event %s: step=%d verdict=%s text=%.120s", ev.Kind, ev.Step, ev.Verdict, ev.Text)
 		}
@@ -40,6 +45,12 @@ func TestEndToEndAgainstRealModel(t *testing.T) {
 
 	if err := eng.Start(ctx, "learn Python basics with a tiny number guessing game"); err != nil {
 		t.Fatalf("Start: %v", err)
+	}
+	if eng.State() != StatePropose {
+		t.Fatalf("state after Start = %s, want propose", eng.State())
+	}
+	if err := eng.UserMessage(ctx, "The first idea sounds good — let's do that one."); err != nil {
+		t.Fatalf("choosing a project: %v", err)
 	}
 	if eng.State() != StateDrive || len(eng.Plan().Steps) == 0 {
 		t.Fatalf("state=%s plan=%+v", eng.State(), eng.Plan())

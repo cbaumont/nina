@@ -79,13 +79,20 @@ func hintParagraph(speed profile.HintSpeed) string {
 	}
 }
 
-func startPrompt(goal string) string {
+func proposePrompt(goal string) string {
 	return fmt.Sprintf(`The learner wants to learn: %s
 
-Do the following now:
-1. Design a tiny but real project for this goal, sized to a single session, and record it with the set_plan tool: a short title and 3-5 small steps, each with a goal the learner's code can be reviewed against.
-2. Scaffold the project with the write_file tool as far as the typing dial allows: only setup files and empty or stub entry points with no learning value. Leave everything the learner should learn unwritten. Where it fits, include a tiny test harness the session can use as ground truth — unless writing tests is itself the learning goal. Use run_command for any environment setup the project needs (installs, version checks); the learner confirms each command.
-3. Announce what you scaffolded, then orient and instruct for step 1.`, goal)
+Right now, propose 2-3 project ideas and ask which one they'd like. Each should be tiny but real — a small genuine application sized to one session, not an exercise — with a name, a one-or-two-sentence description, and what it will teach. Do not use set_plan or scaffold anything yet.
+
+Once they choose (they may also ask questions or want different ideas first — that's fine), do the following in one turn:
+1. Environment self-check: verify the needed toolchain with run_command (version checks; suggest fixes if something is missing before going on).
+2. Record the plan with set_plan: a short title and 3-5 small steps, each with a goal the learner's code can be reviewed against. Step 1 must be a tiny end-to-end warm-up — write one trivial thing and run it — so the learner sees the pipeline work within minutes.
+3. Scaffold with write_file as far as the typing dial allows: only setup files and empty or stub entry points with no learning value. Leave everything the learner should learn unwritten. Where it fits, include a tiny test harness as ground truth — unless writing tests is itself the learning goal.
+4. Announce what you scaffolded, then orient and instruct for step 1.`, goal)
+}
+
+func summaryPrompt() string {
+	return `The session is wrapping up. Write the learner a session summary in markdown, addressed to them directly: what they built, the concepts they worked with (one line each, plainly explained), what they did well, and 2-3 topics worth revisiting or practicing next. Do not use any tools; reply with the summary only.`
 }
 
 func instructPrompt(index int, step llm.PlanStep) string {
