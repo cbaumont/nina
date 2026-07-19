@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cbaumont/nina/internal/llm"
+	"github.com/cbaumont/nina/internal/state"
 	"github.com/cbaumont/nina/internal/workspace"
 )
 
@@ -211,6 +212,62 @@ func TestSessionCompletesAfterLastStep(t *testing.T) {
 	}
 	if !found {
 		t.Error("missing session_done event")
+	}
+}
+
+func TestPersistAndRestoreContinuesSession(t *testing.T) {
+	eng, dir, _ := startedEngine(t, nil)
+	sess, messages, err := state.Load(dir)
+	if err != nil || sess == nil {
+		t.Fatalf("no session persisted after Start: %+v, %v", sess, err)
+	}
+	if sess.State != string(StateDrive) || sess.Goal != "learn python" || len(messages) == 0 {
+		t.Errorf("session = %+v, messages = %d", sess, len(messages))
+	}
+
+	// A fresh engine in the same workspace picks up where the first left off.
+	ws, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := &[]Event{}
+	restored := New(&fakeClient{turns: []llm.Turn{
+		{ToolCalls: []llm.ToolCall{
+			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "pass", Feedback: "Nice."}),
+		}, StopReason: "tool_use"},
+		{Text: "Verdict recorded.", StopReason: "end_turn"},
+		{Text: "Step 2 instructions.", StopReason: "end_turn"},
+	}}, ws, dir, func(ev Event) { *events = append(*events, ev) })
+	restored.Restore(sess, messages)
+
+	if restored.State() != StateDrive || restored.Plan().Title != eng.Plan().Title {
+		t.Errorf("restored state = %s, plan = %+v", restored.State(), restored.Plan())
+	}
+	writeWorkspaceFile(t, dir, "main.py", "n = int(input())\n")
+	if err := restored.Done(context.Background()); err != nil {
+		t.Fatalf("Done after restore: %v", err)
+	}
+	if restored.StepIndex() != 1 {
+		t.Errorf("step index = %d", restored.StepIndex())
+	}
+}
+
+func TestSnapshotsExcludeNinaDir(t *testing.T) {
+	eng, dir, _ := startedEngine(t, []llm.Turn{
+		{ToolCalls: []llm.ToolCall{
+			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "retry", Feedback: "keep going"}),
+		}, StopReason: "tool_use"},
+	})
+	// Only .nina content changed => diff must be empty, so Done reports
+	// "no changes" instead of sending the session state to review.
+	if err := eng.Done(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if eng.review != nil {
+		t.Error(".nina changes leaked into the review diff")
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".nina", "session.json")); err != nil {
+		t.Fatalf("expected session state on disk: %v", err)
 	}
 }
 

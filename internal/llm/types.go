@@ -6,15 +6,15 @@ import (
 )
 
 type ToolCall struct {
-	ID    string
-	Name  string
-	Input json.RawMessage
+	ID    string          `json:"id"`
+	Name  string          `json:"name"`
+	Input json.RawMessage `json:"input"`
 }
 
 type ToolResult struct {
-	ToolCallID string
-	Content    string
-	IsError    bool
+	ToolCallID string `json:"tool_call_id"`
+	Content    string `json:"content"`
+	IsError    bool   `json:"is_error,omitempty"`
 }
 
 type Turn struct {
@@ -24,10 +24,10 @@ type Turn struct {
 }
 
 type Message struct {
-	Role        string
-	Text        string
-	ToolCalls   []ToolCall
-	ToolResults []ToolResult
+	Role        string       `json:"role"`
+	Text        string       `json:"text,omitempty"`
+	ToolCalls   []ToolCall   `json:"tool_calls,omitempty"`
+	ToolResults []ToolResult `json:"tool_results,omitempty"`
 }
 
 type Conversation struct {

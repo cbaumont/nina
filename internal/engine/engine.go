@@ -11,6 +11,7 @@ import (
 
 	"github.com/cbaumont/nina/internal/llm"
 	"github.com/cbaumont/nina/internal/runner"
+	"github.com/cbaumont/nina/internal/state"
 	"github.com/cbaumont/nina/internal/workspace"
 )
 
@@ -77,6 +78,7 @@ type Engine struct {
 	emit        func(Event)
 	conv        *llm.Conversation
 	sessionID   string
+	goal        string
 	state       State
 	plan        Plan
 	stepIndex   int
@@ -102,12 +104,45 @@ func New(client llm.Client, ws *workspace.Workspace, dir string, emit func(Event
 func (e *Engine) State() State   { return e.state }
 func (e *Engine) Plan() Plan     { return e.plan }
 func (e *Engine) StepIndex() int { return e.stepIndex }
+func (e *Engine) Goal() string   { return e.goal }
+
+// Restore rebuilds the engine from a saved session so it can continue
+// where it left off. Call before any other engine method.
+func (e *Engine) Restore(sess *state.Session, messages []llm.Message) {
+	e.sessionID = sess.SessionID
+	e.goal = sess.Goal
+	e.state = State(sess.State)
+	e.plan = Plan{Title: sess.PlanTitle, Steps: sess.Steps}
+	e.stepIndex = sess.StepIndex
+	e.snapshots = sess.Snapshots
+	e.lastRef = sess.LastRef
+	e.conv.Messages = messages
+}
+
+// persist saves the session and transcript to .nina/; failures are
+// reported to the user but never interrupt the session.
+func (e *Engine) persist() {
+	sess := &state.Session{
+		SessionID: e.sessionID,
+		Goal:      e.goal,
+		State:     string(e.state),
+		PlanTitle: e.plan.Title,
+		Steps:     e.plan.Steps,
+		StepIndex: e.stepIndex,
+		Snapshots: e.snapshots,
+		LastRef:   e.lastRef,
+	}
+	if err := state.Save(e.dir, sess, e.conv.Messages); err != nil {
+		e.emit(Event{Kind: EventInfo, Text: "Warning: could not save session state: " + err.Error()})
+	}
+}
 
 func (e *Engine) Start(ctx context.Context, goal string) error {
 	if e.state != StateIdle {
 		return fmt.Errorf("session already started")
 	}
 	e.state = StateScaffold
+	e.goal = goal
 	e.conv.AddUser(startPrompt(goal))
 	if _, err := e.converseLoop(ctx); err != nil {
 		e.state = StateIdle
@@ -121,6 +156,7 @@ func (e *Engine) Start(ctx context.Context, goal string) error {
 		return err
 	}
 	e.state = StateDrive
+	e.persist()
 	e.emit(Event{Kind: EventStepStarted, Step: e.stepIndex})
 	return nil
 }
@@ -154,12 +190,14 @@ func (e *Engine) Done(ctx context.Context) error {
 	}
 	e.emit(Event{Kind: EventReview, Verdict: e.review.Verdict, Text: e.review.Feedback, Step: e.stepIndex})
 	if e.review.Verdict != "pass" {
+		e.persist()
 		return nil
 	}
 
 	e.stepIndex++
 	if e.stepIndex >= len(e.plan.Steps) {
 		e.state = StateDone
+		e.persist()
 		e.emit(Event{Kind: EventSessionDone})
 		return nil
 	}
@@ -167,6 +205,7 @@ func (e *Engine) Done(ctx context.Context) error {
 	if _, err := e.converseLoop(ctx); err != nil {
 		return err
 	}
+	e.persist()
 	e.emit(Event{Kind: EventStepStarted, Step: e.stepIndex})
 	return nil
 }
@@ -177,6 +216,9 @@ func (e *Engine) UserMessage(ctx context.Context, text string) error {
 	}
 	e.conv.AddUser(text)
 	_, err := e.converseLoop(ctx)
+	if err == nil {
+		e.persist()
+	}
 	return err
 }
 

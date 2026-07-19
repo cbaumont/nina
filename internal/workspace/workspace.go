@@ -19,7 +19,40 @@ func Open(dir string) (*Workspace, error) {
 			return nil, fmt.Errorf("initializing git repository: %w", err)
 		}
 	}
+	if err := w.excludeFromSnapshots("/.nina/"); err != nil {
+		return nil, err
+	}
 	return w, nil
+}
+
+// excludeFromSnapshots adds pattern to .git/info/exclude so `git add -A`
+// (and the user's own git) skips it, without touching the user's .gitignore.
+func (w *Workspace) excludeFromSnapshots(pattern string) error {
+	gitDir, err := w.git(nil, "rev-parse", "--git-dir")
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(gitDir) {
+		gitDir = filepath.Join(w.dir, gitDir)
+	}
+	path := filepath.Join(gitDir, "info", "exclude")
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for line := range strings.SplitSeq(string(existing), "\n") {
+		if strings.TrimSpace(line) == pattern {
+			return nil
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	content := string(existing)
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return os.WriteFile(path, []byte(content+pattern+"\n"), 0o644)
 }
 
 func SnapshotRef(session string, step int) string {

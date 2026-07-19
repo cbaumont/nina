@@ -35,6 +35,12 @@ func run(args []string) error {
 			return err
 		}
 		return tui.Run(strings.Join(args[1:], " "), dir)
+	case "resume":
+		dir, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		return tui.Run("", dir)
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", args[0])
@@ -46,6 +52,7 @@ func printUsage() {
 
 Usage:
   nina start "<learning goal>"   begin a guided session in the current directory
+  nina resume                    continue the session saved in .nina/
   nina version                   print version
 
 Models:

@@ -13,10 +13,28 @@ import (
 
 	"github.com/cbaumont/nina/internal/engine"
 	"github.com/cbaumont/nina/internal/llm"
+	"github.com/cbaumont/nina/internal/state"
 	"github.com/cbaumont/nina/internal/workspace"
 )
 
+// Run starts a session. With an empty goal it resumes the session saved
+// in dir; with a goal it starts fresh, refusing if a live session exists.
 func Run(goal, dir string) error {
+	sess, messages, err := state.Load(dir)
+	if err != nil {
+		return err
+	}
+	if goal == "" {
+		if sess == nil {
+			return fmt.Errorf("no session to resume here; start one with nina start \"<learning goal>\"")
+		}
+		if sess.State == string(engine.StateDone) {
+			return fmt.Errorf("the last session is complete; start a new one with nina start \"<learning goal>\"")
+		}
+	} else if sess != nil && sess.State != string(engine.StateDone) {
+		return fmt.Errorf("a session is already in progress here (%s); continue it with nina resume, or delete .nina/ to start over", sess.PlanTitle)
+	}
+
 	ws, err := workspace.Open(dir)
 	if err != nil {
 		return err
@@ -29,6 +47,10 @@ func Run(goal, dir string) error {
 	eng := engine.New(client, ws, dir, func(ev engine.Event) {
 		events <- ev
 	})
+	if goal == "" {
+		eng.Restore(sess, messages)
+		goal = sess.Goal
+	}
 	program := tea.NewProgram(newModel(eng, events, goal), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
@@ -62,7 +84,7 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string) *model 
 	input := textinput.New()
 	input.Placeholder = "Ask Nina anything · /done when you finish a step · /run to run it (/quit to exit)"
 	input.Focus()
-	return &model{
+	m := &model{
 		eng:       eng,
 		events:    events,
 		goal:      goal,
@@ -70,12 +92,28 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string) *model 
 		busy:      true,
 		busyLabel: "setting up your learning project",
 	}
+	if eng.State() != engine.StateIdle {
+		plan := eng.Plan()
+		m.planTitle = plan.Title
+		m.stepCount = len(plan.Steps)
+		m.stepIndex = eng.StepIndex()
+		m.busy = false
+		m.busyLabel = ""
+		step := plan.Steps[m.stepIndex]
+		m.history = fmt.Sprintf("## %s\n\n▶️ **Session resumed** at step %d/%d: %s\n\nStep goal: %s\n\nKeep working in your editor and `/done` when ready — or ask Nina to remind you where you left off.\n",
+			plan.Title, m.stepIndex+1, m.stepCount, step.Title, step.Goal)
+	}
+	return m
 }
 
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(m.waitForEvent(), m.runOp(func() error {
-		return m.eng.Start(context.Background(), m.goal)
-	}), textinput.Blink)
+	cmds := []tea.Cmd{m.waitForEvent(), textinput.Blink}
+	if m.eng.State() == engine.StateIdle {
+		cmds = append(cmds, m.runOp(func() error {
+			return m.eng.Start(context.Background(), m.goal)
+		}))
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m *model) waitForEvent() tea.Cmd {
