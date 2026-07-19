@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cbaumont/nina/internal/llm"
+	"github.com/cbaumont/nina/internal/profile"
 	"github.com/cbaumont/nina/internal/runner"
 	"github.com/cbaumont/nina/internal/state"
 	"github.com/cbaumont/nina/internal/workspace"
@@ -67,8 +68,6 @@ type Plan struct {
 	Steps []llm.PlanStep
 }
 
-const DialLevel = 1
-
 const (
 	commandTimeout   = 2 * time.Minute
 	maxReadFileBytes = 32 * 1024
@@ -89,9 +88,10 @@ type Engine struct {
 	lastRef     string
 	review      *llm.SubmitReviewInput
 	autoApprove map[string]bool
+	profile     profile.Profile
 }
 
-func New(client llm.Client, ws *workspace.Workspace, dir string, emit func(Event)) *Engine {
+func New(client llm.Client, ws *workspace.Workspace, dir string, prof profile.Profile, emit func(Event)) *Engine {
 	return &Engine{
 		client:      client,
 		ws:          ws,
@@ -99,15 +99,32 @@ func New(client llm.Client, ws *workspace.Workspace, dir string, emit func(Event
 		emit:        emit,
 		sessionID:   time.Now().Format("20060102-150405"),
 		state:       StateIdle,
-		conv:        &llm.Conversation{System: systemPrompt()},
+		conv:        &llm.Conversation{System: systemPrompt(prof)},
 		autoApprove: map[string]bool{},
+		profile:     prof,
 	}
 }
 
-func (e *Engine) State() State   { return e.state }
-func (e *Engine) Plan() Plan     { return e.plan }
-func (e *Engine) StepIndex() int { return e.stepIndex }
-func (e *Engine) Goal() string   { return e.goal }
+func (e *Engine) State() State             { return e.state }
+func (e *Engine) Plan() Plan               { return e.plan }
+func (e *Engine) StepIndex() int           { return e.stepIndex }
+func (e *Engine) Goal() string             { return e.goal }
+func (e *Engine) Profile() profile.Profile { return e.profile }
+
+// UpdateProfile applies a new profile immediately: the system prompt is
+// rebuilt so the change takes effect on the next model call, and the
+// profile is persisted for this project and as the global default.
+func (e *Engine) UpdateProfile(p profile.Profile) error {
+	e.profile = p
+	e.conv.System = systemPrompt(p)
+	if err := profile.Save(e.dir, p); err != nil {
+		return err
+	}
+	if e.state != StateIdle {
+		e.persist()
+	}
+	return nil
+}
 
 // Restore rebuilds the engine from a saved session so it can continue
 // where it left off. Call before any other engine method.
@@ -213,6 +230,32 @@ func (e *Engine) Done(ctx context.Context) error {
 	return nil
 }
 
+// Skip abandons the current step without review: the workspace is
+// snapshotted as the new baseline and the session moves on.
+func (e *Engine) Skip(ctx context.Context) error {
+	if e.state != StateDrive {
+		return fmt.Errorf("no step in progress")
+	}
+	skipped := e.stepIndex
+	if err := e.snapshot(); err != nil {
+		return err
+	}
+	e.stepIndex++
+	if e.stepIndex >= len(e.plan.Steps) {
+		e.state = StateDone
+		e.persist()
+		e.emit(Event{Kind: EventSessionDone})
+		return nil
+	}
+	e.conv.AddUser(skipPrompt(skipped, e.plan.Steps[skipped]) + "\n\n" + instructPrompt(e.stepIndex, e.plan.Steps[e.stepIndex]))
+	if _, err := e.converseLoop(ctx); err != nil {
+		return err
+	}
+	e.persist()
+	e.emit(Event{Kind: EventStepStarted, Step: e.stepIndex})
+	return nil
+}
+
 func (e *Engine) UserMessage(ctx context.Context, text string) error {
 	if e.state == StateIdle {
 		return fmt.Errorf("session not started")
@@ -250,6 +293,8 @@ func (e *Engine) execTool(ctx context.Context, call llm.ToolCall) llm.ToolResult
 		return e.execWriteFile(call)
 	case llm.ToolSetPlan:
 		return e.execSetPlan(call)
+	case llm.ToolUpdatePlan:
+		return e.execUpdatePlan(call)
 	case llm.ToolSubmitReview:
 		return e.execSubmitReview(call)
 	case llm.ToolRunCommand:
@@ -342,7 +387,17 @@ func (e *Engine) execReadFile(call llm.ToolCall) llm.ToolResult {
 }
 
 func (e *Engine) execWriteFile(call llm.ToolCall) llm.ToolResult {
-	if e.state != StateScaffold {
+	// The dial is enforced here, in the engine, not by prompt goodwill:
+	// levels 0-1 are hard guarantees; 2-3 permit writes and rely on the
+	// prompt-level ceiling plus the announcement below for transparency.
+	switch {
+	case e.profile.Dial == 0:
+		return llm.ToolResult{
+			ToolCallID: call.ID,
+			Content:    "Denied by the typing dial policy: at dial level 0 you may not write files at all. Instruct the learner to write this themselves.",
+			IsError:    true,
+		}
+	case e.profile.Dial == 1 && e.state != StateScaffold:
 		return llm.ToolResult{
 			ToolCallID: call.ID,
 			Content:    "Denied by the typing dial policy: at dial level 1 you may only write files while scaffolding the project. Instruct the learner to write this code themselves.",
@@ -378,6 +433,23 @@ func (e *Engine) execSetPlan(call llm.ToolCall) llm.ToolResult {
 	e.plan = Plan{Title: input.Title, Steps: input.Steps}
 	e.emit(Event{Kind: EventPlanSet, Plan: &e.plan})
 	return llm.ToolResult{ToolCallID: call.ID, Content: fmt.Sprintf("plan set with %d steps", len(input.Steps))}
+}
+
+func (e *Engine) execUpdatePlan(call llm.ToolCall) llm.ToolResult {
+	if e.state != StateDrive {
+		return llm.ToolResult{ToolCallID: call.ID, Content: "update_plan is only available once the session is underway; use set_plan for the initial plan", IsError: true}
+	}
+	var input llm.UpdatePlanInput
+	if err := json.Unmarshal(call.Input, &input); err != nil {
+		return llm.ToolResult{ToolCallID: call.ID, Content: "invalid update_plan input: " + err.Error(), IsError: true}
+	}
+	if len(input.Steps) == 0 {
+		return llm.ToolResult{ToolCallID: call.ID, Content: "update_plan needs at least one replacement step", IsError: true}
+	}
+	e.plan.Steps = append(e.plan.Steps[:e.stepIndex+1], input.Steps...)
+	e.persist()
+	e.emit(Event{Kind: EventPlanSet, Plan: &e.plan})
+	return llm.ToolResult{ToolCallID: call.ID, Content: fmt.Sprintf("plan revised: %d steps remain after the current one", len(input.Steps))}
 }
 
 func (e *Engine) execSubmitReview(call llm.ToolCall) llm.ToolResult {

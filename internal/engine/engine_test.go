@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cbaumont/nina/internal/llm"
+	"github.com/cbaumont/nina/internal/profile"
 	"github.com/cbaumont/nina/internal/state"
 	"github.com/cbaumont/nina/internal/workspace"
 )
@@ -54,7 +55,7 @@ func newTestEngine(t *testing.T, turns []llm.Turn) (*Engine, string, *[]Event) {
 		t.Fatal(err)
 	}
 	events := &[]Event{}
-	eng := New(&fakeClient{turns: turns}, ws, dir, func(ev Event) {
+	eng := New(&fakeClient{turns: turns}, ws, dir, profile.Default(), func(ev Event) {
 		*events = append(*events, ev)
 	})
 	return eng, dir, events
@@ -108,6 +109,96 @@ func TestDialRejectsWritesAfterScaffold(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "solution.py")); !os.IsNotExist(err) {
 		t.Error("file was created despite dial rejection")
+	}
+}
+
+func TestDialPolicyMatrix(t *testing.T) {
+	cases := []struct {
+		dial    int
+		state   State
+		allowed bool
+	}{
+		{0, StateScaffold, false},
+		{0, StateDrive, false},
+		{1, StateScaffold, true},
+		{1, StateDrive, false},
+		{2, StateScaffold, true},
+		{2, StateDrive, true},
+		{3, StateDrive, true},
+	}
+	for _, tc := range cases {
+		eng, dir, _ := newTestEngine(t, nil)
+		eng.profile.Dial = tc.dial
+		eng.state = tc.state
+		result := eng.execTool(context.Background(), toolCall(t, llm.ToolWriteFile, llm.WriteFileInput{Path: "f.py", Content: "x"}))
+		if got := !result.IsError; got != tc.allowed {
+			t.Errorf("dial %d in %s: allowed = %v, want %v", tc.dial, tc.state, got, tc.allowed)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "f.py")); (err == nil) != tc.allowed {
+			t.Errorf("dial %d in %s: file existence mismatch", tc.dial, tc.state)
+		}
+	}
+}
+
+func TestUpdateProfileRebuildsSystemPrompt(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	eng, _, _ := startedEngine(t, nil)
+	prof := eng.Profile()
+	prof.Dial = 0
+	if err := eng.UpdateProfile(prof); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(eng.conv.System, "level 0") {
+		t.Error("system prompt not rebuilt after profile change")
+	}
+	result := eng.execTool(context.Background(), toolCall(t, llm.ToolWriteFile, llm.WriteFileInput{Path: "f.py", Content: "x"}))
+	if !result.IsError {
+		t.Error("write allowed at dial 0 after update")
+	}
+}
+
+func TestUpdatePlanReplacesRemainingSteps(t *testing.T) {
+	eng, _, events := startedEngine(t, nil)
+
+	result := eng.execTool(context.Background(), toolCall(t, llm.ToolUpdatePlan, llm.UpdatePlanInput{
+		Steps: []llm.PlanStep{{Title: "New step 2", Goal: "different goal"}, {Title: "New step 3", Goal: "extra"}},
+	}))
+	if result.IsError {
+		t.Fatalf("result = %+v", result)
+	}
+	steps := eng.Plan().Steps
+	if len(steps) != 3 || steps[0].Title != "Read input" || steps[1].Title != "New step 2" {
+		t.Errorf("steps = %+v", steps)
+	}
+	last := (*events)[len(*events)-1]
+	if last.Kind != EventPlanSet {
+		t.Errorf("expected plan_set event, got %+v", last)
+	}
+}
+
+func TestSkipAdvancesWithoutReview(t *testing.T) {
+	eng, dir, events := startedEngine(t, []llm.Turn{
+		{Text: "Step 2 instructions.", StopReason: "end_turn"},
+	})
+	writeWorkspaceFile(t, dir, "main.py", "half-finished\n")
+
+	if err := eng.Skip(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if eng.StepIndex() != 1 || eng.State() != StateDrive {
+		t.Errorf("step = %d, state = %s", eng.StepIndex(), eng.State())
+	}
+	for _, ev := range *events {
+		if ev.Kind == EventReview {
+			t.Error("skip must not produce a review")
+		}
+	}
+	// The skipped work is the new baseline: an immediate /done sees no diff.
+	if err := eng.Done(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if eng.StepIndex() != 1 {
+		t.Errorf("baseline not reset; step = %d", eng.StepIndex())
 	}
 }
 
@@ -237,7 +328,7 @@ func TestPersistAndRestoreContinuesSession(t *testing.T) {
 		}, StopReason: "tool_use"},
 		{Text: "Verdict recorded.", StopReason: "end_turn"},
 		{Text: "Step 2 instructions.", StopReason: "end_turn"},
-	}}, ws, dir, func(ev Event) { *events = append(*events, ev) })
+	}}, ws, dir, profile.Default(), func(ev Event) { *events = append(*events, ev) })
 	restored.Restore(sess, messages)
 
 	if restored.State() != StateDrive || restored.Plan().Title != eng.Plan().Title {
@@ -279,7 +370,7 @@ func confirmingEngine(t *testing.T, answer ConfirmAnswer) (*Engine, string, *[]E
 		t.Fatal(err)
 	}
 	events := &[]Event{}
-	eng := New(&fakeClient{}, ws, dir, func(ev Event) {
+	eng := New(&fakeClient{}, ws, dir, profile.Default(), func(ev Event) {
 		*events = append(*events, ev)
 		if ev.Kind == EventConfirm {
 			ev.Confirm.Reply <- answer

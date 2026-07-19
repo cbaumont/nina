@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cbaumont/nina/internal/llm"
+	"github.com/cbaumont/nina/internal/profile"
 	"github.com/cbaumont/nina/internal/workspace"
 )
 
@@ -27,7 +28,7 @@ func TestEndToEndAgainstRealModel(t *testing.T) {
 	}
 
 	var events []Event
-	eng := New(client, ws, dir, func(ev Event) {
+	eng := New(client, ws, dir, profile.Default(), func(ev Event) {
 		events = append(events, ev)
 		if ev.Kind != EventTextDelta {
 			t.Logf("event %s: step=%d verdict=%s text=%.120s", ev.Kind, ev.Step, ev.Verdict, ev.Text)

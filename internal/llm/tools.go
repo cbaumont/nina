@@ -6,6 +6,7 @@ const (
 	ToolSubmitReview = "submit_review"
 	ToolRunCommand   = "run_command"
 	ToolReadFile     = "read_file"
+	ToolUpdatePlan   = "update_plan"
 )
 
 type WriteFileInput struct {
@@ -29,6 +30,10 @@ type PlanStep struct {
 
 type SetPlanInput struct {
 	Title string     `json:"title"`
+	Steps []PlanStep `json:"steps"`
+}
+
+type UpdatePlanInput struct {
 	Steps []PlanStep `json:"steps"`
 }
 
@@ -73,6 +78,25 @@ func ToolDefs() []ToolDef {
 				},
 			},
 			Required: []string{"title", "steps"},
+		},
+		{
+			Name:        ToolUpdatePlan,
+			Description: "Revise the not-yet-started steps of the task plan. Completed steps and the step in progress are kept; the given steps replace everything after the current one. Always tell the learner what changed and why.",
+			Properties: map[string]any{
+				"steps": map[string]any{
+					"type":        "array",
+					"description": "Replacement steps for the remainder of the session",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"title": map[string]any{"type": "string", "description": "Short step title"},
+							"goal":  map[string]any{"type": "string", "description": "What the learner's code must achieve for this step to pass review"},
+						},
+						"required": []string{"title", "goal"},
+					},
+				},
+			},
+			Required: []string{"steps"},
 		},
 		{
 			Name:        ToolRunCommand,

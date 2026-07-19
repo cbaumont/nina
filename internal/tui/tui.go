@@ -14,6 +14,7 @@ import (
 
 	"github.com/cbaumont/nina/internal/engine"
 	"github.com/cbaumont/nina/internal/llm"
+	"github.com/cbaumont/nina/internal/profile"
 	"github.com/cbaumont/nina/internal/state"
 	"github.com/cbaumont/nina/internal/watcher"
 	"github.com/cbaumont/nina/internal/workspace"
@@ -47,14 +48,19 @@ func Run(goal, dir string) error {
 	if err != nil {
 		return err
 	}
+	prof, profileFound, err := profile.Load(dir)
+	if err != nil {
+		return err
+	}
 	events := make(chan engine.Event, 64)
-	eng := engine.New(client, ws, dir, func(ev engine.Event) {
+	eng := engine.New(client, ws, dir, prof, func(ev engine.Event) {
 		events <- ev
 	})
 	if goal == "" {
 		eng.Restore(sess, messages)
 		goal = sess.Goal
 	}
+	needSetup := !profileFound && sess == nil
 	// Watch failure is non-fatal: worst case Nina behaves as if watching
 	// were off and the learner drives reviews with /done alone.
 	if w, err := watcher.Start(dir, watcherIdle, func() {
@@ -65,7 +71,7 @@ func Run(goal, dir string) error {
 	}); err == nil {
 		defer w.Close()
 	}
-	program := tea.NewProgram(newModel(eng, events, goal), tea.WithAltScreen())
+	program := tea.NewProgram(newModel(eng, events, goal, needSetup), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
 }
@@ -88,6 +94,7 @@ type model struct {
 	busyLabel      string
 	pendingConfirm *engine.ConfirmRequest
 	nudgedStep     int
+	setup          *setupFlow
 	planTitle string
 	stepIndex int
 	stepCount int
@@ -95,9 +102,9 @@ type model struct {
 	ready     bool
 }
 
-func newModel(eng *engine.Engine, events chan engine.Event, goal string) *model {
+func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSetup bool) *model {
 	input := textinput.New()
-	input.Placeholder = "Ask Nina anything · /done when you finish a step · /run to run it (/quit to exit)"
+	input.Placeholder = "Ask Nina anything · /done when you finish a step · /help for commands (/quit to exit)"
 	input.Focus()
 	m := &model{
 		eng:        eng,
@@ -107,6 +114,12 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string) *model 
 		busy:       true,
 		busyLabel:  "setting up your learning project",
 		nudgedStep: -1,
+	}
+	if needSetup {
+		m.busy = false
+		m.busyLabel = ""
+		m.setup = &setupFlow{prof: eng.Profile()}
+		m.history = "## Welcome to Nina 👋\n\nA quick minute of setup so Nina can teach at your level — press Enter to keep any default.\n" + setupQuestion(0, m.setup.prof)
 	}
 	if eng.State() != engine.StateIdle {
 		plan := eng.Plan()
@@ -124,12 +137,95 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string) *model 
 
 func (m *model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.waitForEvent(), textinput.Blink}
-	if m.eng.State() == engine.StateIdle {
+	if m.eng.State() == engine.StateIdle && m.setup == nil {
 		cmds = append(cmds, m.runOp(func() error {
 			return m.eng.Start(context.Background(), m.goal)
 		}))
 	}
 	return tea.Batch(cmds...)
+}
+
+// setupFlow walks the profile questions, either at first run (then the
+// session starts once done) or when re-opened with /profile mid-session.
+type setupFlow struct {
+	index   int
+	prof    profile.Profile
+	editing bool
+}
+
+const setupQuestions = 5
+
+func setupQuestion(index int, prof profile.Profile) string {
+	switch index {
+	case 0:
+		return fmt.Sprintf("\n**1/5 — Your general programming experience?** `none` · `beginner` · `intermediate` · `professional` *(default: %s)*\n", prof.Experience)
+	case 1:
+		return fmt.Sprintf("\n**2/5 — How familiar are you with the stack you're learning?** `none` · `beginner` · `intermediate` · `professional` *(default: %s)*\n", prof.StackFamiliar)
+	case 2:
+		known := strings.Join(prof.KnownStacks, ", ")
+		if known == "" {
+			known = "none"
+		}
+		return fmt.Sprintf("\n**3/5 — Languages or stacks you already know?** comma-separated, so Nina can use analogies *(default: %s)*\n", known)
+	case 3:
+		return fmt.Sprintf("\n**4/5 — How much may Nina type?** `0` full manual · `1` scaffold only · `2` + boilerplate · `3` collaborative *(default: %d)*\n", prof.Dial)
+	default:
+		return fmt.Sprintf("\n**5/5 — How fast should hints escalate when you're stuck?** `slow` · `medium` · `fast` *(default: %s)*\n", prof.HintEscalation)
+	}
+}
+
+func (m *model) handleSetup(text string) (tea.Model, tea.Cmd) {
+	m.input.Reset()
+	s := m.setup
+	if answer := strings.ToLower(strings.TrimSpace(text)); answer != "" {
+		var err error
+		switch s.index {
+		case 0:
+			s.prof.Experience, err = profile.ParseLevel(answer)
+		case 1:
+			s.prof.StackFamiliar, err = profile.ParseLevel(answer)
+		case 2:
+			s.prof.KnownStacks = nil
+			if answer != "none" {
+				for stack := range strings.SplitSeq(answer, ",") {
+					if stack = strings.TrimSpace(stack); stack != "" {
+						s.prof.KnownStacks = append(s.prof.KnownStacks, stack)
+					}
+				}
+			}
+		case 3:
+			s.prof.Dial, err = profile.ParseDial(answer)
+		case 4:
+			s.prof.HintEscalation, err = profile.ParseHintSpeed(answer)
+		}
+		if err != nil {
+			m.history += "\n> " + err.Error() + "\n" + setupQuestion(s.index, s.prof)
+			m.refreshViewport()
+			return m, nil
+		}
+	}
+	s.index++
+	if s.index < setupQuestions {
+		m.history += setupQuestion(s.index, s.prof)
+		m.refreshViewport()
+		return m, nil
+	}
+
+	m.setup = nil
+	if err := m.eng.UpdateProfile(s.prof); err != nil {
+		m.history += "\n> **Error:** could not save your profile: " + err.Error() + "\n"
+	}
+	if s.editing {
+		m.history += "\n> ✅ Profile updated — Nina adapts from the next message.\n"
+		m.refreshViewport()
+		return m, nil
+	}
+	m.busy = true
+	m.busyLabel = "setting up your learning project"
+	m.refreshViewport()
+	return m, m.runOp(func() error {
+		return m.eng.Start(context.Background(), m.goal)
+	})
 }
 
 func (m *model) waitForEvent() tea.Cmd {
@@ -197,6 +293,9 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 	if m.pendingConfirm != nil {
 		return m.handleConfirm(strings.ToLower(text))
 	}
+	if m.setup != nil {
+		return m.handleSetup(text)
+	}
 	if text == "/quit" || text == "/exit" {
 		return m, tea.Quit
 	}
@@ -210,11 +309,24 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 		if command != "" {
 			message = fmt.Sprintf("Please run `%s` now and walk me through the output.", command)
 		}
-		m.busy = true
-		m.busyLabel = "running"
-		m.history += fmt.Sprintf("\n---\n\n`%s`\n", text)
+		return m.sendToNina("`"+text+"`", "running", message)
+	}
+	if value, ok := strings.CutPrefix(text, "/dial "); ok {
+		dial, err := profile.ParseDial(strings.TrimSpace(value))
+		if err != nil {
+			m.history += "\n> " + err.Error() + "\n"
+			m.refreshViewport()
+			return m, nil
+		}
+		prof := m.eng.Profile()
+		prof.Dial = dial
+		if err := m.eng.UpdateProfile(prof); err != nil {
+			m.history += "\n> **Error:** " + err.Error() + "\n"
+		} else {
+			m.history += fmt.Sprintf("\n> 🎚️ Typing dial set to %d.\n", dial)
+		}
 		m.refreshViewport()
-		return m, m.runOp(func() error { return m.eng.UserMessage(context.Background(), message) })
+		return m, nil
 	}
 	switch text {
 	case "/done":
@@ -223,13 +335,50 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 		m.history += "\n---\n\n`/done`\n"
 		m.refreshViewport()
 		return m, m.runOp(func() error { return m.eng.Done(context.Background()) })
-	default:
+	case "/skip":
 		m.busy = true
-		m.busyLabel = "thinking"
-		m.history += fmt.Sprintf("\n---\n\n**You:** %s\n", text)
+		m.busyLabel = "skipping to the next step"
+		m.history += "\n---\n\n`/skip`\n"
 		m.refreshViewport()
-		return m, m.runOp(func() error { return m.eng.UserMessage(context.Background(), text) })
+		return m, m.runOp(func() error { return m.eng.Skip(context.Background()) })
+	case "/why":
+		return m.sendToNina("`"+text+"`", "thinking",
+			"Why this step? Zoom out: explain how it fits into the bigger picture of what we're building and why it comes now.")
+	case "/stuck":
+		return m.sendToNina("`"+text+"`", "thinking",
+			"I'm stuck on the current step. Help me get moving again, escalating per my hint settings — start with your next-strongest hint, not the full solution.")
+	case "/recap":
+		return m.sendToNina("`"+text+"`", "recapping",
+			"Recap the session so far: what we've built, the concepts covered, and how the pieces fit together.")
+	case "/profile":
+		m.setup = &setupFlow{prof: m.eng.Profile(), editing: true}
+		m.history += "\n> Adjust your profile — press Enter to keep any current value.\n" + setupQuestion(0, m.setup.prof)
+		m.refreshViewport()
+		return m, nil
+	case "/dial":
+		m.history += fmt.Sprintf("\n> The typing dial is at %d. Change it with `/dial <0-3>`.\n", m.eng.Profile().Dial)
+		m.refreshViewport()
+		return m, nil
+	case "/help":
+		m.history += "\n> **Commands:** `/done` review the step · `/why` zoom out · `/stuck` get help · `/skip` next step · `/recap` session recap · `/run [cmd]` run code · `/dial <0-3>` typing dial · `/profile` adjust profile · `/quit`\n"
+		m.refreshViewport()
+		return m, nil
+	default:
+		if strings.HasPrefix(text, "/") {
+			m.history += fmt.Sprintf("\n> Unknown command `%s` — `/help` lists the commands.\n", text)
+			m.refreshViewport()
+			return m, nil
+		}
+		return m.sendToNina("**You:** "+text, "thinking", text)
 	}
+}
+
+func (m *model) sendToNina(display, label, message string) (tea.Model, tea.Cmd) {
+	m.busy = true
+	m.busyLabel = label
+	m.history += fmt.Sprintf("\n---\n\n%s\n", display)
+	m.refreshViewport()
+	return m, m.runOp(func() error { return m.eng.UserMessage(context.Background(), message) })
 }
 
 func (m *model) handleConfirm(answer string) (tea.Model, tea.Cmd) {
@@ -356,7 +505,7 @@ func (m *model) statusLine() string {
 		}
 		parts = append(parts, fmt.Sprintf("step %d/%d", step, m.stepCount))
 	}
-	parts = append(parts, fmt.Sprintf("dial %d", engine.DialLevel))
+	parts = append(parts, fmt.Sprintf("dial %d", m.eng.Profile().Dial))
 	if m.busy {
 		parts = append(parts, "⋯ "+m.busyLabel)
 	}
