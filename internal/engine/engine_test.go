@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cbaumont/nina/internal/llm"
@@ -100,7 +101,7 @@ func TestStartScaffoldsAndPlans(t *testing.T) {
 func TestDialRejectsWritesAfterScaffold(t *testing.T) {
 	eng, dir, _ := startedEngine(t, nil)
 
-	result := eng.execTool(toolCall(t, llm.ToolWriteFile, llm.WriteFileInput{Path: "solution.py", Content: "answer"}))
+	result := eng.execTool(context.Background(), toolCall(t, llm.ToolWriteFile, llm.WriteFileInput{Path: "solution.py", Content: "answer"}))
 	if !result.IsError {
 		t.Fatal("write_file allowed outside scaffold state")
 	}
@@ -113,7 +114,7 @@ func TestWriteFileRejectsEscapingPaths(t *testing.T) {
 	eng, _, _ := newTestEngine(t, nil)
 	eng.state = StateScaffold
 	for _, path := range []string{"../evil.txt", "/etc/passwd", ""} {
-		result := eng.execTool(toolCall(t, llm.ToolWriteFile, llm.WriteFileInput{Path: path, Content: "x"}))
+		result := eng.execTool(context.Background(), toolCall(t, llm.ToolWriteFile, llm.WriteFileInput{Path: path, Content: "x"}))
 		if !result.IsError {
 			t.Errorf("path %q accepted", path)
 		}
@@ -210,6 +211,102 @@ func TestSessionCompletesAfterLastStep(t *testing.T) {
 	}
 	if !found {
 		t.Error("missing session_done event")
+	}
+}
+
+func confirmingEngine(t *testing.T, answer ConfirmAnswer) (*Engine, string, *[]Event) {
+	t.Helper()
+	dir := t.TempDir()
+	ws, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := &[]Event{}
+	eng := New(&fakeClient{}, ws, dir, func(ev Event) {
+		*events = append(*events, ev)
+		if ev.Kind == EventConfirm {
+			ev.Confirm.Reply <- answer
+		}
+	})
+	eng.state = StateDrive
+	return eng, dir, events
+}
+
+func runCall(t *testing.T, command string) llm.ToolCall {
+	t.Helper()
+	return toolCall(t, llm.ToolRunCommand, llm.RunCommandInput{Command: command, Reason: "verify"})
+}
+
+func TestRunCommandApproved(t *testing.T) {
+	eng, _, events := confirmingEngine(t, ConfirmAnswer{Approve: true})
+
+	result := eng.execTool(context.Background(), runCall(t, "echo hello"))
+	if result.IsError {
+		t.Fatalf("result = %+v", result)
+	}
+	if !strings.Contains(result.Content, "exit code: 0") || !strings.Contains(result.Content, "hello") {
+		t.Errorf("content = %q", result.Content)
+	}
+	kinds := map[EventKind]int{}
+	for _, ev := range *events {
+		kinds[ev.Kind]++
+	}
+	if kinds[EventConfirm] != 1 || kinds[EventCommandRun] != 1 {
+		t.Errorf("events = %v", kinds)
+	}
+}
+
+func TestRunCommandDeclined(t *testing.T) {
+	eng, dir, events := confirmingEngine(t, ConfirmAnswer{Approve: false})
+
+	result := eng.execTool(context.Background(), runCall(t, "touch declined.txt"))
+	if result.IsError {
+		t.Fatalf("declined command should not be a tool error: %+v", result)
+	}
+	if !strings.Contains(result.Content, "declined") {
+		t.Errorf("content = %q", result.Content)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "declined.txt")); !os.IsNotExist(err) {
+		t.Error("command ran despite decline")
+	}
+	for _, ev := range *events {
+		if ev.Kind == EventCommandRun {
+			t.Error("unexpected command_run event")
+		}
+	}
+}
+
+func TestRunCommandAlwaysSkipsSecondConfirm(t *testing.T) {
+	eng, _, events := confirmingEngine(t, ConfirmAnswer{Approve: true, Always: true})
+
+	for range 2 {
+		if result := eng.execTool(context.Background(), runCall(t, "true")); result.IsError {
+			t.Fatalf("result = %+v", result)
+		}
+	}
+	confirms := 0
+	for _, ev := range *events {
+		if ev.Kind == EventConfirm {
+			confirms++
+		}
+	}
+	if confirms != 1 {
+		t.Errorf("confirm events = %d, want 1", confirms)
+	}
+}
+
+func TestReadFile(t *testing.T) {
+	eng, dir, _ := confirmingEngine(t, ConfirmAnswer{})
+	writeWorkspaceFile(t, dir, "main.py", "print('hi')\n")
+
+	result := eng.execTool(context.Background(), toolCall(t, llm.ToolReadFile, llm.ReadFileInput{Path: "main.py"}))
+	if result.IsError || result.Content != "print('hi')\n" {
+		t.Errorf("result = %+v", result)
+	}
+
+	result = eng.execTool(context.Background(), toolCall(t, llm.ToolReadFile, llm.ReadFileInput{Path: "../secret"}))
+	if !result.IsError {
+		t.Error("escaping path accepted")
 	}
 }
 

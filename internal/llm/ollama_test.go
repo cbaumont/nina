@@ -62,7 +62,7 @@ func TestOllamaStreamsTextAndBuildsRequest(t *testing.T) {
 	if len(request.Messages) != 2 || request.Messages[0].Role != "system" || request.Messages[0].Content != "be helpful" {
 		t.Errorf("messages = %+v", request.Messages)
 	}
-	if len(request.Tools) != 3 || request.Tools[0].Type != "function" {
+	if len(request.Tools) != len(ToolDefs()) || request.Tools[0].Type != "function" {
 		t.Errorf("tools = %+v", request.Tools)
 	}
 	if request.Options["num_ctx"] == nil {

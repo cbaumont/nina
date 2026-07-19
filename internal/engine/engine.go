@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cbaumont/nina/internal/llm"
+	"github.com/cbaumont/nina/internal/runner"
 	"github.com/cbaumont/nina/internal/workspace"
 )
 
@@ -31,6 +32,8 @@ const (
 	EventStepStarted EventKind = "step_started"
 	EventReview      EventKind = "review"
 	EventSessionDone EventKind = "session_done"
+	EventConfirm     EventKind = "confirm"
+	EventCommandRun  EventKind = "command_run"
 )
 
 type Event struct {
@@ -39,6 +42,20 @@ type Event struct {
 	Step    int
 	Plan    *Plan
 	Verdict string
+	Confirm *ConfirmRequest
+}
+
+// ConfirmRequest asks the user to approve a command the model proposed.
+// The engine blocks until an answer is sent on Reply.
+type ConfirmRequest struct {
+	Command string
+	Reason  string
+	Reply   chan ConfirmAnswer
+}
+
+type ConfirmAnswer struct {
+	Approve bool
+	Always  bool
 }
 
 type Plan struct {
@@ -48,30 +65,37 @@ type Plan struct {
 
 const DialLevel = 1
 
+const (
+	commandTimeout   = 2 * time.Minute
+	maxReadFileBytes = 32 * 1024
+)
+
 type Engine struct {
-	client    llm.Client
-	ws        *workspace.Workspace
-	dir       string
-	emit      func(Event)
-	conv      *llm.Conversation
-	sessionID string
-	state     State
-	plan      Plan
-	stepIndex int
-	snapshots int
-	lastRef   string
-	review    *llm.SubmitReviewInput
+	client      llm.Client
+	ws          *workspace.Workspace
+	dir         string
+	emit        func(Event)
+	conv        *llm.Conversation
+	sessionID   string
+	state       State
+	plan        Plan
+	stepIndex   int
+	snapshots   int
+	lastRef     string
+	review      *llm.SubmitReviewInput
+	autoApprove map[string]bool
 }
 
 func New(client llm.Client, ws *workspace.Workspace, dir string, emit func(Event)) *Engine {
 	return &Engine{
-		client:    client,
-		ws:        ws,
-		dir:       dir,
-		emit:      emit,
-		sessionID: time.Now().Format("20060102-150405"),
-		state:     StateIdle,
-		conv:      &llm.Conversation{System: systemPrompt()},
+		client:      client,
+		ws:          ws,
+		dir:         dir,
+		emit:        emit,
+		sessionID:   time.Now().Format("20060102-150405"),
+		state:       StateIdle,
+		conv:        &llm.Conversation{System: systemPrompt()},
+		autoApprove: map[string]bool{},
 	}
 }
 
@@ -169,13 +193,13 @@ func (e *Engine) converseLoop(ctx context.Context) (llm.Turn, error) {
 		}
 		results := make([]llm.ToolResult, 0, len(turn.ToolCalls))
 		for _, call := range turn.ToolCalls {
-			results = append(results, e.execTool(call))
+			results = append(results, e.execTool(ctx, call))
 		}
 		e.conv.AddToolResults(results)
 	}
 }
 
-func (e *Engine) execTool(call llm.ToolCall) llm.ToolResult {
+func (e *Engine) execTool(ctx context.Context, call llm.ToolCall) llm.ToolResult {
 	switch call.Name {
 	case llm.ToolWriteFile:
 		return e.execWriteFile(call)
@@ -183,9 +207,93 @@ func (e *Engine) execTool(call llm.ToolCall) llm.ToolResult {
 		return e.execSetPlan(call)
 	case llm.ToolSubmitReview:
 		return e.execSubmitReview(call)
+	case llm.ToolRunCommand:
+		return e.execRunCommand(ctx, call)
+	case llm.ToolReadFile:
+		return e.execReadFile(call)
 	default:
 		return llm.ToolResult{ToolCallID: call.ID, Content: fmt.Sprintf("unknown tool %q", call.Name), IsError: true}
 	}
+}
+
+func (e *Engine) execRunCommand(ctx context.Context, call llm.ToolCall) llm.ToolResult {
+	var input llm.RunCommandInput
+	if err := json.Unmarshal(call.Input, &input); err != nil {
+		return llm.ToolResult{ToolCallID: call.ID, Content: "invalid run_command input: " + err.Error(), IsError: true}
+	}
+	if strings.TrimSpace(input.Command) == "" {
+		return llm.ToolResult{ToolCallID: call.ID, Content: "run_command needs a non-empty command", IsError: true}
+	}
+	if !e.autoApprove[input.Command] {
+		reply := make(chan ConfirmAnswer, 1)
+		e.emit(Event{Kind: EventConfirm, Confirm: &ConfirmRequest{Command: input.Command, Reason: input.Reason, Reply: reply}})
+		var answer ConfirmAnswer
+		select {
+		case answer = <-reply:
+		case <-ctx.Done():
+			return llm.ToolResult{ToolCallID: call.ID, Content: "cancelled", IsError: true}
+		}
+		if answer.Always && answer.Approve {
+			e.autoApprove[input.Command] = true
+		}
+		if !answer.Approve {
+			return llm.ToolResult{ToolCallID: call.ID, Content: "The learner declined to run this command. Continue without it, or propose an alternative and explain why it is needed."}
+		}
+	}
+	result, err := runner.Run(ctx, e.dir, input.Command, commandTimeout)
+	if err != nil {
+		return llm.ToolResult{ToolCallID: call.ID, Content: err.Error(), IsError: true}
+	}
+	e.emit(Event{Kind: EventCommandRun, Text: commandOutputMarkdown(input.Command, result)})
+	return llm.ToolResult{ToolCallID: call.ID, Content: commandToolContent(result)}
+}
+
+func commandOutputMarkdown(command string, result runner.Result) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "```console\n$ %s\n", command)
+	if result.Output != "" {
+		b.WriteString(result.Output + "\n")
+	}
+	b.WriteString("```\n")
+	switch {
+	case result.TimedOut:
+		fmt.Fprintf(&b, "*timed out after %s and was killed*", commandTimeout)
+	case result.ExitCode == 0:
+		b.WriteString("*exit code 0*")
+	default:
+		fmt.Fprintf(&b, "*exit code %d*", result.ExitCode)
+	}
+	return b.String()
+}
+
+func commandToolContent(result runner.Result) string {
+	content := fmt.Sprintf("exit code: %d", result.ExitCode)
+	if result.TimedOut {
+		content = fmt.Sprintf("command timed out after %s and was killed\n%s", commandTimeout, content)
+	}
+	if result.Output == "" {
+		return content + "\n(no output)"
+	}
+	return content + "\n" + result.Output
+}
+
+func (e *Engine) execReadFile(call llm.ToolCall) llm.ToolResult {
+	var input llm.ReadFileInput
+	if err := json.Unmarshal(call.Input, &input); err != nil {
+		return llm.ToolResult{ToolCallID: call.ID, Content: "invalid read_file input: " + err.Error(), IsError: true}
+	}
+	path, err := e.safePath(input.Path)
+	if err != nil {
+		return llm.ToolResult{ToolCallID: call.ID, Content: err.Error(), IsError: true}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return llm.ToolResult{ToolCallID: call.ID, Content: err.Error(), IsError: true}
+	}
+	if len(data) > maxReadFileBytes {
+		return llm.ToolResult{ToolCallID: call.ID, Content: string(data[:maxReadFileBytes]) + "\n[file truncated]"}
+	}
+	return llm.ToolResult{ToolCallID: call.ID, Content: string(data)}
 }
 
 func (e *Engine) execWriteFile(call llm.ToolCall) llm.ToolResult {

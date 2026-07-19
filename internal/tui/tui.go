@@ -46,10 +46,11 @@ type model struct {
 	input    textinput.Model
 	renderer *glamour.TermRenderer
 
-	history   string
-	streaming strings.Builder
-	busy      bool
-	busyLabel string
+	history        string
+	streaming      strings.Builder
+	busy           bool
+	busyLabel      string
+	pendingConfirm *engine.ConfirmRequest
 	planTitle string
 	stepIndex int
 	stepCount int
@@ -59,7 +60,7 @@ type model struct {
 
 func newModel(eng *engine.Engine, events chan engine.Event, goal string) *model {
 	input := textinput.New()
-	input.Placeholder = "Ask Nina anything, or /done when you finish a step (/quit to exit)"
+	input.Placeholder = "Ask Nina anything · /done when you finish a step · /run to run it (/quit to exit)"
 	input.Focus()
 	return &model{
 		eng:       eng,
@@ -139,6 +140,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
+	if m.pendingConfirm != nil {
+		return m.handleConfirm(strings.ToLower(text))
+	}
 	if text == "/quit" || text == "/exit" {
 		return m, tea.Quit
 	}
@@ -146,6 +150,18 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.input.Reset()
+	if command, ok := strings.CutPrefix(text, "/run"); ok && (command == "" || command[0] == ' ') {
+		command = strings.TrimSpace(command)
+		message := "Please run the project (or its tests) now and walk me through the output."
+		if command != "" {
+			message = fmt.Sprintf("Please run `%s` now and walk me through the output.", command)
+		}
+		m.busy = true
+		m.busyLabel = "running"
+		m.history += fmt.Sprintf("\n---\n\n`%s`\n", text)
+		m.refreshViewport()
+		return m, m.runOp(func() error { return m.eng.UserMessage(context.Background(), message) })
+	}
 	switch text {
 	case "/done":
 		m.busy = true
@@ -162,6 +178,37 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 	}
 }
 
+func (m *model) handleConfirm(answer string) (tea.Model, tea.Cmd) {
+	req := m.pendingConfirm
+	var reply engine.ConfirmAnswer
+	switch answer {
+	case "y", "yes":
+		reply = engine.ConfirmAnswer{Approve: true}
+	case "a", "always":
+		reply = engine.ConfirmAnswer{Approve: true, Always: true}
+	case "n", "no":
+		reply = engine.ConfirmAnswer{}
+	default:
+		m.history += "\n> Please answer **y** (run once), **a** (always this session), or **n** (skip).\n"
+		m.refreshViewport()
+		m.input.Reset()
+		return m, nil
+	}
+	m.pendingConfirm = nil
+	m.input.Reset()
+	label := "skipped"
+	if reply.Approve {
+		label = "approved"
+		if reply.Always {
+			label = "approved for this session"
+		}
+	}
+	m.history += fmt.Sprintf("\n> `%s` %s\n", req.Command, label)
+	m.refreshViewport()
+	req.Reply <- reply
+	return m, nil
+}
+
 func (m *model) handleEvent(ev engine.Event) {
 	switch ev.Kind {
 	case engine.EventTextDelta:
@@ -169,6 +216,17 @@ func (m *model) handleEvent(ev engine.Event) {
 	case engine.EventInfo:
 		m.flushStreaming()
 		m.history += fmt.Sprintf("\n> %s\n", ev.Text)
+	case engine.EventCommandRun:
+		m.flushStreaming()
+		m.history += "\n" + ev.Text + "\n"
+	case engine.EventConfirm:
+		m.flushStreaming()
+		m.pendingConfirm = ev.Confirm
+		reason := ""
+		if ev.Confirm.Reason != "" {
+			reason = " — " + ev.Confirm.Reason
+		}
+		m.history += fmt.Sprintf("\n> ⚡ Nina wants to run `%s`%s\n>\n> **y** run once · **a** always this session · **n** skip\n", ev.Confirm.Command, reason)
 	case engine.EventPlanSet:
 		m.flushStreaming()
 		m.planTitle = ev.Plan.Title

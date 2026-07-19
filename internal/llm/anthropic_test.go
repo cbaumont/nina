@@ -86,7 +86,7 @@ func TestAnthropicMessageConversion(t *testing.T) {
 
 func TestAnthropicToolConversion(t *testing.T) {
 	tools := anthropicTools()
-	if len(tools) != 3 {
+	if len(tools) != len(ToolDefs()) {
 		t.Fatalf("tools = %d", len(tools))
 	}
 	raw, err := json.Marshal(tools)
