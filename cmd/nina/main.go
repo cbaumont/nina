@@ -30,9 +30,6 @@ func run(args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("start requires a learning goal, e.g. nina start \"learn Python basics\"")
 		}
-		if os.Getenv("ANTHROPIC_API_KEY") == "" {
-			return fmt.Errorf("ANTHROPIC_API_KEY is not set; export your API key first")
-		}
 		dir, err := os.Getwd()
 		if err != nil {
 			return err
@@ -49,5 +46,12 @@ func printUsage() {
 
 Usage:
   nina start "<learning goal>"   begin a guided session in the current directory
-  nina version                   print version`)
+  nina version                   print version
+
+Models:
+  Claude (default)   requires ANTHROPIC_API_KEY; pick a model with NINA_MODEL
+  Ollama (local)     NINA_MODEL=ollama:<model>, e.g. ollama:gemma4
+                     host via NINA_OLLAMA_HOST (default http://localhost:11434)
+                     the model must support tool calling (gemma4, qwen3,
+                     llama3.x do; plain gemma3 does not)`)
 }

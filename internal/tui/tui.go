@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -22,7 +21,7 @@ func Run(goal, dir string) error {
 	if err != nil {
 		return err
 	}
-	client, err := llm.NewAnthropic(os.Getenv("NINA_MODEL"))
+	client, err := llm.New()
 	if err != nil {
 		return err
 	}
