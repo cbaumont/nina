@@ -1,6 +1,6 @@
 # Design Document: Nina — an AI Pair Programming Companion
 
-**Status:** Draft v0.3
+**Status:** Draft v0.4 — stack decided (Go + Bubble Tea); walking skeleton implemented with Claude and Ollama backends
 **Author:** Carlos
 **Date:** July 2026
 
@@ -90,7 +90,7 @@ The first ten minutes decide whether a learner returns. First run includes an en
 
 ```
 ┌─────────────────────────────┐
-│  CLI (TUI)                  │  MVP runtime TBD: Node.js/Ink or Python/Textual
+│  CLI (TUI)                  │  Go + Bubble Tea/Glamour (decided; single static binary)
 │  - session loop & commands  │
 │  - rendering, status line   │
 └──────────┬──────────────────┘
@@ -107,8 +107,8 @@ The first ten minutes decide whether a learner returns. First run includes an en
 │ LLM    │ │ Workspace│ │ Runner      │
 │ client │ │ watcher  │ │ - run code  │
 │(Claude │ │ - fs     │ │ - tests     │
-│  API)  │ │   events │ │ - capture   │
-│        │ │ - diffs  │ │   output    │
+│ API or │ │   events │ │ - capture   │
+│ Ollama)│ │ - diffs  │ │   output    │
 └────────┘ └──────────┘ └─────────────┘
 ```
 
@@ -122,7 +122,7 @@ The chat channel gets a similar guard. A fast-model pass screens outgoing naviga
 
 **Runner.** Executes build/test/run commands with captured stdout/stderr fed back to both the user and the model. Commands are proposed by the model and confirmed by the user, with optional auto-approval for safe classes like the project's own test command. The Runner also owns environment health for learning projects: dependency installs, version checks, and the first-run self-check. MVP has no sandbox beyond confirmation.
 
-**LLM Client.** Claude API via the official SDK, using tool use for structured actions (`write_file`, `read_file`, `run_command`, `update_plan`, `update_profile`). A strong model handles planning, review, and explanation; a fast model handles lightweight classification such as step completion, dial screening, and profile-inference signals. Session context is managed by summarizing older steps. With bring-your-own-key billing, define and track a target cost per typical session during beta.
+**LLM Client.** A provider-neutral conversation and tool-definition layer with pluggable backends, using tool use for structured actions (`write_file`, `read_file`, `run_command`, `update_plan`, `update_profile`). Two backends exist: the Claude API via the official Go SDK (default, `claude-sonnet-5`), and local models via Ollama's native `/api/chat` (selected with `NINA_MODEL=ollama:<model>`; the model must support tool calling, e.g. `gemma4`). Local models make development and testing free of token costs and give privacy-sensitive learners a fully offline option, at reduced review quality. A strong model handles planning, review, and explanation; a fast model handles lightweight classification such as step completion, dial screening, and profile-inference signals. Session context is managed by summarizing older steps. With bring-your-own-key billing, define and track a target cost per typical session during beta.
 
 **State & Persistence.** A `.nina/` directory holds the task plan, profile overrides, transcripts, and pointers to git snapshots, making sessions resumable and powering end-of-session summaries.
 
@@ -134,9 +134,11 @@ The chat channel gets a similar guard. A fast-model pass screens outgoing naviga
 
 **Pedagogy as explicit prompt policy.** Teaching behavior — Socratic review, hint escalation, right-sized steps, and "why" alongside "what" — is encoded as versioned prompt files assembled from the profile, so it can be tuned rapidly against real sessions.
 
+**Provider-neutral LLM layer.** The engine speaks one internal conversation format; each backend (Claude API, Ollama) converts to its wire format per request. This keeps the dial filter and pedagogy independent of any vendor SDK, and makes token-free local testing a first-class workflow rather than a fork.
+
 ## 6. MVP Scope
 
-The MVP is a single-user CLI. Runtime and packaging are an explicit open choice: Node.js/Ink via npm or Python/Textual via pipx. It supports one or two launch stacks well, proposed as Python and JavaScript/TypeScript. It includes learning-project mode, profile and dial, engine-level dial enforcement, low-dial message screening, the core loop, file watching, git snapshots, runner confirmation, environment self-check, session resume, and end-of-session summaries. Bring-your-own API keys keep billing out of scope initially.
+The MVP is a single-user CLI. Runtime and packaging are decided: Go with Bubble Tea/Glamour, distributed as a single static binary. It supports one or two launch stacks well, proposed as Python and JavaScript/TypeScript. It includes learning-project mode, profile and dial, engine-level dial enforcement, low-dial message screening, the core loop, file watching, git snapshots, runner confirmation, environment self-check, session resume, and end-of-session summaries. Bring-your-own API keys keep billing out of scope initially.
 
 Explicitly deferred: own-project mode (4.2), additional stacks, long-term learner progress models across projects, spaced-repetition review of past concepts, voice interaction, and any hosted/account infrastructure.
 
