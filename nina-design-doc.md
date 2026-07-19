@@ -103,7 +103,7 @@ The first ten minutes decide whether a learner returns. First run includes an en
 │  - transcript & summaries   │
 └───┬──────────┬──────────┬───┘
     │          │          │
-┌───┴────┐ ┌───┴─────┐ ┌──┴──────────┐
+┌───┴────┐ ┌───┴──────┐ ┌─┴───────────┐
 │ LLM    │ │ Workspace│ │ Runner      │
 │ client │ │ watcher  │ │ - run code  │
 │(Claude │ │ - fs     │ │ - tests     │
