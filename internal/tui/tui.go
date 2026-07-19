@@ -60,6 +60,11 @@ func Run(goal, dir string) error {
 		eng.Restore(sess, messages)
 		goal = sess.Goal
 	}
+	// Fast-tier screener for dial 0-1 message screening; without one the
+	// session runs unscreened rather than not at all.
+	if screener, err := llm.NewScreener(); err == nil {
+		eng.SetScreener(screener)
+	}
 	needSetup := !profileFound && sess == nil
 	// Watch failure is non-fatal: worst case Nina behaves as if watching
 	// were off and the learner drives reviews with /done alone.

@@ -19,12 +19,15 @@ type fakeClient struct {
 	calls int
 }
 
-func (f *fakeClient) Converse(_ context.Context, _ *llm.Conversation, _ func(string)) (llm.Turn, error) {
-	if f.calls >= len(f.turns) {
-		return llm.Turn{Text: "ok", StopReason: "end_turn"}, nil
+func (f *fakeClient) Converse(_ context.Context, _ *llm.Conversation, onDelta func(string)) (llm.Turn, error) {
+	turn := llm.Turn{Text: "ok", StopReason: "end_turn"}
+	if f.calls < len(f.turns) {
+		turn = f.turns[f.calls]
 	}
-	turn := f.turns[f.calls]
 	f.calls++
+	if onDelta != nil && turn.Text != "" {
+		onDelta(turn.Text)
+	}
 	return turn, nil
 }
 
@@ -455,6 +458,109 @@ func TestReadFile(t *testing.T) {
 	result = eng.execTool(context.Background(), toolCall(t, llm.ToolReadFile, llm.ReadFileInput{Path: "../secret"}))
 	if !result.IsError {
 		t.Error("escaping path accepted")
+	}
+}
+
+// scriptedScreener replies with the given verdicts in order.
+type scriptedScreener struct {
+	verdicts []string
+	calls    int
+}
+
+func (s *scriptedScreener) Converse(_ context.Context, _ *llm.Conversation, _ func(string)) (llm.Turn, error) {
+	verdict := "OK"
+	if s.calls < len(s.verdicts) {
+		verdict = s.verdicts[s.calls]
+	}
+	s.calls++
+	return llm.Turn{Text: verdict, StopReason: "end_turn"}, nil
+}
+
+func emittedText(events *[]Event) string {
+	var b strings.Builder
+	for _, ev := range *events {
+		if ev.Kind == EventTextDelta {
+			b.WriteString(ev.Text)
+		}
+	}
+	return b.String()
+}
+
+func TestScreeningPassesCleanMessage(t *testing.T) {
+	eng, _, events := startedEngine(t, []llm.Turn{
+		{Text: "Try using input() here.", StopReason: "end_turn"},
+	})
+	screener := &scriptedScreener{verdicts: []string{"OK"}}
+	eng.SetScreener(screener)
+	client := eng.client.(*fakeClient)
+	mainCallsBefore := client.calls
+
+	if err := eng.UserMessage(context.Background(), "how do I read input?"); err != nil {
+		t.Fatal(err)
+	}
+	if got := emittedText(events); !strings.Contains(got, "Try using input() here.") {
+		t.Errorf("emitted = %q", got)
+	}
+	if screener.calls != 1 {
+		t.Errorf("screener calls = %d", screener.calls)
+	}
+	// Latency guard: a clean message costs exactly one strong-model call.
+	if client.calls-mainCallsBefore != 1 {
+		t.Errorf("main model calls = %d, want 1", client.calls-mainCallsBefore)
+	}
+}
+
+func TestScreeningRegeneratesFlaggedMessage(t *testing.T) {
+	eng, _, events := startedEngine(t, []llm.Turn{
+		{Text: "here is the full solution: n = int(input())", StopReason: "end_turn"},
+		{Text: "Use int() around input() — you write it.", StopReason: "end_turn"},
+	})
+	eng.SetScreener(&scriptedScreener{verdicts: []string{"LEAK", "OK"}})
+
+	if err := eng.UserMessage(context.Background(), "just tell me"); err != nil {
+		t.Fatal(err)
+	}
+	got := emittedText(events)
+	if strings.Contains(got, "full solution") {
+		t.Errorf("flagged text delivered: %q", got)
+	}
+	if !strings.Contains(got, "you write it") {
+		t.Errorf("regenerated text missing: %q", got)
+	}
+}
+
+func TestScreeningFlaggedTwiceDeliversWithCaution(t *testing.T) {
+	eng, _, events := startedEngine(t, []llm.Turn{
+		{Text: "solution v1", StopReason: "end_turn"},
+		{Text: "solution v2", StopReason: "end_turn"},
+	})
+	eng.SetScreener(&scriptedScreener{verdicts: []string{"LEAK", "LEAK"}})
+
+	if err := eng.UserMessage(context.Background(), "just tell me"); err != nil {
+		t.Fatal(err)
+	}
+	got := emittedText(events)
+	if !strings.Contains(got, "solution v2") || !strings.Contains(got, "⚠️") {
+		t.Errorf("emitted = %q", got)
+	}
+}
+
+func TestScreeningInactiveAtHighDial(t *testing.T) {
+	eng, _, events := startedEngine(t, []llm.Turn{
+		{Text: "full solution here", StopReason: "end_turn"},
+	})
+	screener := &scriptedScreener{}
+	eng.SetScreener(screener)
+	eng.profile.Dial = 2
+
+	if err := eng.UserMessage(context.Background(), "help"); err != nil {
+		t.Fatal(err)
+	}
+	if screener.calls != 0 {
+		t.Errorf("screener ran at dial 2 (%d calls)", screener.calls)
+	}
+	if got := emittedText(events); !strings.Contains(got, "full solution here") {
+		t.Errorf("emitted = %q", got)
 	}
 }
 

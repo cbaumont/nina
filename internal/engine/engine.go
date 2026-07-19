@@ -89,6 +89,7 @@ type Engine struct {
 	review      *llm.SubmitReviewInput
 	autoApprove map[string]bool
 	profile     profile.Profile
+	screener    llm.Client
 }
 
 func New(client llm.Client, ws *workspace.Workspace, dir string, prof profile.Profile, emit func(Event)) *Engine {
@@ -270,11 +271,21 @@ func (e *Engine) UserMessage(ctx context.Context, text string) error {
 
 func (e *Engine) converseLoop(ctx context.Context) (llm.Turn, error) {
 	for {
-		turn, err := e.client.Converse(ctx, e.conv, func(text string) {
-			e.emit(Event{Kind: EventTextDelta, Text: text})
-		})
+		// Screened messages are buffered, not streamed: the learner sees
+		// them only after the dial-leak check (design doc §4.4).
+		screening := e.screeningActive()
+		var onDelta func(string)
+		if !screening {
+			onDelta = func(text string) {
+				e.emit(Event{Kind: EventTextDelta, Text: text})
+			}
+		}
+		turn, err := e.client.Converse(ctx, e.conv, onDelta)
 		if err != nil {
 			return llm.Turn{}, err
+		}
+		if screening && strings.TrimSpace(turn.Text) != "" {
+			e.emit(Event{Kind: EventTextDelta, Text: e.screenText(ctx, turn.Text)})
 		}
 		if len(turn.ToolCalls) == 0 {
 			return turn, nil
