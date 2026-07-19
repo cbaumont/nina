@@ -35,6 +35,9 @@ const (
 	EventSessionDone EventKind = "session_done"
 	EventConfirm     EventKind = "confirm"
 	EventCommandRun  EventKind = "command_run"
+	// EventNudge is produced by the workspace watcher, not the engine:
+	// a hint that the user edited files and went idle. Display-only.
+	EventNudge EventKind = "nudge"
 )
 
 type Event struct {

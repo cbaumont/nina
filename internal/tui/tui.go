@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -14,8 +15,11 @@ import (
 	"github.com/cbaumont/nina/internal/engine"
 	"github.com/cbaumont/nina/internal/llm"
 	"github.com/cbaumont/nina/internal/state"
+	"github.com/cbaumont/nina/internal/watcher"
 	"github.com/cbaumont/nina/internal/workspace"
 )
+
+const watcherIdle = 25 * time.Second
 
 // Run starts a session. With an empty goal it resumes the session saved
 // in dir; with a goal it starts fresh, refusing if a live session exists.
@@ -51,6 +55,16 @@ func Run(goal, dir string) error {
 		eng.Restore(sess, messages)
 		goal = sess.Goal
 	}
+	// Watch failure is non-fatal: worst case Nina behaves as if watching
+	// were off and the learner drives reviews with /done alone.
+	if w, err := watcher.Start(dir, watcherIdle, func() {
+		select {
+		case events <- engine.Event{Kind: engine.EventNudge}:
+		default:
+		}
+	}); err == nil {
+		defer w.Close()
+	}
 	program := tea.NewProgram(newModel(eng, events, goal), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
@@ -73,6 +87,7 @@ type model struct {
 	busy           bool
 	busyLabel      string
 	pendingConfirm *engine.ConfirmRequest
+	nudgedStep     int
 	planTitle string
 	stepIndex int
 	stepCount int
@@ -85,12 +100,13 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string) *model 
 	input.Placeholder = "Ask Nina anything · /done when you finish a step · /run to run it (/quit to exit)"
 	input.Focus()
 	m := &model{
-		eng:       eng,
-		events:    events,
-		goal:      goal,
-		input:     input,
-		busy:      true,
-		busyLabel: "setting up your learning project",
+		eng:        eng,
+		events:     events,
+		goal:       goal,
+		input:      input,
+		busy:       true,
+		busyLabel:  "setting up your learning project",
+		nudgedStep: -1,
 	}
 	if eng.State() != engine.StateIdle {
 		plan := eng.Plan()
@@ -284,6 +300,13 @@ func (m *model) handleEvent(ev engine.Event) {
 			icon = "🔄"
 		}
 		m.history += fmt.Sprintf("\n%s **Review (%s):** %s\n", icon, ev.Verdict, ev.Text)
+	case engine.EventNudge:
+		// Hint only, and at most once per step: /done stays authoritative.
+		if m.busy || m.eng.State() != engine.StateDrive || m.nudgedStep == m.stepIndex {
+			return
+		}
+		m.nudgedStep = m.stepIndex
+		m.history += "\n> 👀 Looks like you've made changes and paused — `/done` whenever you want a review.\n"
 	case engine.EventSessionDone:
 		m.flushStreaming()
 		m.history += "\n🎉 **Session complete!** You worked through every step. `/quit` when you're ready.\n"
