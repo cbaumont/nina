@@ -1,6 +1,6 @@
 # Design Document: Nina — an AI Pair Programming Companion
 
-**Status:** Draft v0.2
+**Status:** Draft v0.3
 **Author:** Carlos
 **Date:** July 2026
 
