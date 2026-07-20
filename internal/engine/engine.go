@@ -326,10 +326,21 @@ func (e *Engine) converseLoop(ctx context.Context) (llm.Turn, error) {
 			return turn, nil
 		}
 		results := make([]llm.ToolResult, 0, len(turn.ToolCalls))
+		reviewed := false
 		for _, call := range turn.ToolCalls {
 			results = append(results, e.execTool(ctx, call))
+			if call.Name == llm.ToolSubmitReview {
+				reviewed = true
+			}
 		}
 		e.conv.AddToolResults(results)
+		// submit_review is the terminal action of a review turn (see
+		// systemPrompt's Review step); letting the model keep talking past
+		// it invites it to preview the next step's orient/instruct itself,
+		// duplicating the engine's own instructPrompt call.
+		if reviewed {
+			return turn, nil
+		}
 	}
 }
 

@@ -253,7 +253,6 @@ func TestDonePassAdvancesStep(t *testing.T) {
 		{ToolCalls: []llm.ToolCall{
 			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "pass", Feedback: "Nice use of input()."}),
 		}, StopReason: "tool_use"},
-		{Text: "Verdict recorded.", StopReason: "end_turn"},
 		{Text: "Step 2: compare the numbers.", StopReason: "end_turn"},
 	})
 	writeWorkspaceFile(t, dir, "main.py", "n = int(input())\n")
@@ -269,12 +268,35 @@ func TestDonePassAdvancesStep(t *testing.T) {
 	}
 }
 
+// TestDoneStopsAfterSubmitReview guards against a regression where the
+// engine let the model keep talking after submit_review, which in
+// production sometimes produced a free-form preview of the next step's
+// orient/instruct that then duplicated the engine's own instructPrompt
+// call. Pinning the exact call count catches that extra round trip.
+func TestDoneStopsAfterSubmitReview(t *testing.T) {
+	eng, dir, _ := startedEngine(t, []llm.Turn{
+		{ToolCalls: []llm.ToolCall{
+			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "pass", Feedback: "Nice use of input()."}),
+		}, StopReason: "tool_use"},
+		{Text: "Step 2: compare the numbers.", StopReason: "end_turn"},
+	})
+	writeWorkspaceFile(t, dir, "main.py", "n = int(input())\n")
+
+	fake := eng.client.(*fakeClient)
+	before := fake.calls
+	if err := eng.Done(context.Background()); err != nil {
+		t.Fatalf("Done: %v", err)
+	}
+	if got := fake.calls - before; got != 2 {
+		t.Errorf("Converse calls during Done = %d, want 2 (one review turn, one instruct turn)", got)
+	}
+}
+
 func TestDoneRetryKeepsStep(t *testing.T) {
 	eng, dir, events := startedEngine(t, []llm.Turn{
 		{ToolCalls: []llm.ToolCall{
 			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "retry", Feedback: "What happens if the input is not a number?"}),
 		}, StopReason: "tool_use"},
-		{Text: "Verdict recorded.", StopReason: "end_turn"},
 	})
 	writeWorkspaceFile(t, dir, "main.py", "n = input()\n")
 
@@ -309,12 +331,10 @@ func TestSessionCompletesAfterLastStep(t *testing.T) {
 		{ToolCalls: []llm.ToolCall{
 			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "pass", Feedback: "Good."}),
 		}, StopReason: "tool_use"},
-		{Text: "Verdict recorded.", StopReason: "end_turn"},
 		{Text: "Step 2 instructions.", StopReason: "end_turn"},
 		{ToolCalls: []llm.ToolCall{
 			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "pass", Feedback: "Done!"}),
 		}, StopReason: "tool_use"},
-		{Text: "Verdict recorded.", StopReason: "end_turn"},
 	}
 	eng, dir, events := startedEngine(t, passTurns)
 
@@ -361,7 +381,6 @@ func TestPersistAndRestoreContinuesSession(t *testing.T) {
 		{ToolCalls: []llm.ToolCall{
 			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "pass", Feedback: "Nice."}),
 		}, StopReason: "tool_use"},
-		{Text: "Verdict recorded.", StopReason: "end_turn"},
 		{Text: "Step 2 instructions.", StopReason: "end_turn"},
 	}}, ws, dir, profile.Default(), func(ev Event) { *events = append(*events, ev) })
 	restored.Restore(sess, messages)
