@@ -108,11 +108,15 @@ type model struct {
 	pendingConfirm *engine.ConfirmRequest
 	nudgedStep     int
 	setup          *setupFlow
-	planTitle string
-	stepIndex int
-	stepCount int
-	width     int
-	ready     bool
+	planTitle      string
+	stepIndex      int
+	stepCount      int
+	width          int
+	ready          bool
+
+	renderedHistory    string
+	renderedHistorySrc string
+	historyRenderCount int
 }
 
 func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSetup bool, style string) *model {
@@ -133,6 +137,10 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		viewport: viewport.New(80, 20),
 		ready:    true,
 	}
+	// Default-width renderer for the same reason as the viewport above:
+	// without it, any markdown streamed in before WindowSizeMsg arrives
+	// (e.g. the initial project-idea proposal) would render raw.
+	m.renderer, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(style), glamour.WithWordWrap(78))
 	if needSetup {
 		m.busy = false
 		m.busyLabel = ""
@@ -278,6 +286,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Height = viewportHeight
 		}
 		m.renderer, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(m.style), glamour.WithWordWrap(msg.Width-2))
+		m.renderedHistorySrc = ""
 		m.refreshViewport()
 		return m, nil
 
@@ -296,11 +305,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case opDoneMsg:
 		m.busy = false
 		m.busyLabel = ""
+		m.flushStreaming()
 		if msg.err != nil {
-			m.flushStreaming()
 			m.history += fmt.Sprintf("\n> **Error:** %s\n", msg.err)
-			m.refreshViewport()
 		}
+		m.refreshViewport()
 		return m, nil
 
 	case tea.KeyMsg:
@@ -509,14 +518,26 @@ func (m *model) refreshViewport() {
 	if !m.ready {
 		return
 	}
-	content := m.history
-	if m.renderer != nil {
-		if rendered, err := m.renderer.Render(m.history); err == nil {
-			content = rendered
+	if m.history != m.renderedHistorySrc {
+		content := m.history
+		if m.renderer != nil {
+			if rendered, err := m.renderer.Render(m.history); err == nil {
+				content = rendered
+			}
 		}
+		m.renderedHistory = content
+		m.renderedHistorySrc = m.history
+		m.historyRenderCount++
 	}
+	content := m.renderedHistory
 	if m.streaming.Len() > 0 {
-		content += "\n" + m.streaming.String()
+		streamed := m.streaming.String()
+		if m.renderer != nil {
+			if rendered, err := m.renderer.Render(streamed); err == nil {
+				streamed = rendered
+			}
+		}
+		content += "\n" + streamed
 	}
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
