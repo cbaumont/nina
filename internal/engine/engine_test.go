@@ -64,9 +64,6 @@ func newTestEngine(t *testing.T, turns []llm.Turn) (*Engine, string, *[]Event) {
 	return eng, dir, events
 }
 
-// startedEngine drives a session through propose and scaffold into the
-// drive state: Start proposes ideas, then the learner's pick triggers
-// plan + scaffold.
 func startedEngine(t *testing.T, extraTurns []llm.Turn) (*Engine, string, *[]Event) {
 	t.Helper()
 	turns := append([]llm.Turn{
@@ -103,7 +100,6 @@ func TestStartProposesBeforeScaffolding(t *testing.T) {
 			t.Errorf("file scaffolded during propose: %s", entry.Name())
 		}
 	}
-	// A reply that still doesn't pick keeps proposing.
 	if err := eng.UserMessage(context.Background(), "something else?"); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +224,6 @@ func TestSkipAdvancesWithoutReview(t *testing.T) {
 			t.Error("skip must not produce a review")
 		}
 	}
-	// The skipped work is the new baseline: an immediate /done sees no diff.
 	if err := eng.Done(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -268,11 +263,6 @@ func TestDonePassAdvancesStep(t *testing.T) {
 	}
 }
 
-// TestDoneStopsAfterSubmitReview guards against a regression where the
-// engine let the model keep talking after submit_review, which in
-// production sometimes produced a free-form preview of the next step's
-// orient/instruct that then duplicated the engine's own instructPrompt
-// call. Pinning the exact call count catches that extra round trip.
 func TestDoneStopsAfterSubmitReview(t *testing.T) {
 	eng, dir, _ := startedEngine(t, []llm.Turn{
 		{ToolCalls: []llm.ToolCall{
@@ -371,7 +361,6 @@ func TestPersistAndRestoreContinuesSession(t *testing.T) {
 		t.Errorf("session = %+v, messages = %d", sess, len(messages))
 	}
 
-	// A fresh engine in the same workspace picks up where the first left off.
 	ws, err := workspace.Open(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -403,8 +392,6 @@ func TestSnapshotsExcludeNinaDir(t *testing.T) {
 			toolCall(t, llm.ToolSubmitReview, llm.SubmitReviewInput{Verdict: "retry", Feedback: "keep going"}),
 		}, StopReason: "tool_use"},
 	})
-	// Only .nina content changed => diff must be empty, so Done reports
-	// "no changes" instead of sending the session state to review.
 	if err := eng.Done(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -537,7 +524,6 @@ func TestReadFile(t *testing.T) {
 	}
 }
 
-// scriptedScreener replies with the given verdicts in order.
 type scriptedScreener struct {
 	verdicts []string
 	calls    int
@@ -580,7 +566,6 @@ func TestScreeningPassesCleanMessage(t *testing.T) {
 	if screener.calls != 1 {
 		t.Errorf("screener calls = %d", screener.calls)
 	}
-	// Latency guard: a clean message costs exactly one strong-model call.
 	if client.calls-mainCallsBefore != 1 {
 		t.Errorf("main model calls = %d, want 1", client.calls-mainCallsBefore)
 	}

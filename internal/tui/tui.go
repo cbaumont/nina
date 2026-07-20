@@ -22,8 +22,6 @@ import (
 
 const watcherIdle = 25 * time.Second
 
-// Run starts a session. With an empty goal it resumes the session saved
-// in dir; with a goal it starts fresh, refusing if a live session exists.
 func Run(goal, dir string) error {
 	sess, messages, err := state.Load(dir)
 	if err != nil {
@@ -60,14 +58,10 @@ func Run(goal, dir string) error {
 		eng.Restore(sess, messages)
 		goal = sess.Goal
 	}
-	// Fast-tier screener for dial 0-1 message screening; without one the
-	// session runs unscreened rather than not at all.
 	if screener, err := llm.NewScreener(); err == nil {
 		eng.SetScreener(screener)
 	}
 	needSetup := !profileFound && sess == nil
-	// Watch failure is non-fatal: worst case Nina behaves as if watching
-	// were off and the learner drives reviews with /done alone.
 	if w, err := watcher.Start(dir, watcherIdle, func() {
 		select {
 		case events <- engine.Event{Kind: engine.EventNudge}:
@@ -76,9 +70,6 @@ func Run(goal, dir string) error {
 	}); err == nil {
 		defer w.Close()
 	}
-	// Detect light/dark once, before bubbletea puts stdin in raw mode: glamour's
-	// auto-style query races bubbletea's input reader for the terminal's OSC 11
-	// reply otherwise, leaking the escape sequence into the first keypress.
 	style := "dark"
 	if !lipgloss.HasDarkBackground() {
 		style = "light"
@@ -132,14 +123,9 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		busyLabel:  "brainstorming project ideas",
 		nudgedStep: -1,
 		style:      style,
-		// Default size so the first frame renders immediately, before the
-		// terminal's WindowSizeMsg arrives; Update resizes it once it does.
 		viewport: viewport.New(80, 20),
 		ready:    true,
 	}
-	// Default-width renderer for the same reason as the viewport above:
-	// without it, any markdown streamed in before WindowSizeMsg arrives
-	// (e.g. the initial project-idea proposal) would render raw.
 	m.renderer, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(style), glamour.WithWordWrap(78))
 	if needSetup {
 		m.busy = false
@@ -175,8 +161,6 @@ func (m *model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// setupFlow walks the profile questions, either at first run (then the
-// session starts once done) or when re-opened with /profile mid-session.
 type setupFlow struct {
 	index   int
 	prof    profile.Profile
@@ -323,10 +307,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var inputCmd, viewportCmd tea.Cmd
 	m.input, inputCmd = m.input.Update(msg)
-	// Viewport's default keymap steals letters like j/k/u/d/b/f and space
-	// for scrolling, which fires while the user is typing those chars into
-	// the input. Only forward non-rune keys (pgup/pgdn/home/end/arrows) so
-	// manual scroll-back still works without hijacking typing.
 	if keyMsg, ok := msg.(tea.KeyMsg); !ok || keyMsg.Type != tea.KeyRunes {
 		m.viewport, viewportCmd = m.viewport.Update(msg)
 	}
@@ -500,7 +480,6 @@ func (m *model) handleEvent(ev engine.Event) {
 		}
 		m.history += fmt.Sprintf("\n%s **Review (%s):** %s\n", icon, ev.Verdict, ev.Text)
 	case engine.EventNudge:
-		// Hint only, and at most once per step: /done stays authoritative.
 		if m.busy || m.eng.State() != engine.StateDrive || m.nudgedStep == m.stepIndex {
 			return
 		}

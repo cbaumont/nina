@@ -25,8 +25,6 @@ func Open(dir string) (*Workspace, error) {
 	return w, nil
 }
 
-// excludeFromSnapshots adds pattern to .git/info/exclude so `git add -A`
-// (and the user's own git) skips it, without touching the user's .gitignore.
 func (w *Workspace) excludeFromSnapshots(pattern string) error {
 	gitDir, err := w.git(nil, "rev-parse", "--git-dir")
 	if err != nil {

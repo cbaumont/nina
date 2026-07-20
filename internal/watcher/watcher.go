@@ -9,10 +9,6 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Watcher observes a workspace and calls nudge once the user has edited
-// files and then gone idle. It is a hint source only: file events never
-// trigger reviews directly, /done stays authoritative, and any watch
-// failure degrades to silence.
 type Watcher struct {
 	fs    *fsnotify.Watcher
 	root  string
@@ -117,7 +113,6 @@ func (w *Watcher) ignored(path string) bool {
 		}
 	}
 	base := filepath.Base(path)
-	// Editor noise: vim/emacs swap, temp, and lock files.
 	return strings.HasSuffix(base, "~") ||
 		strings.HasSuffix(base, ".swp") ||
 		strings.HasSuffix(base, ".swo") ||

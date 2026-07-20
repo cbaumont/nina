@@ -14,8 +14,6 @@ import (
 
 const dirName = ".nina"
 
-// Session is everything the engine needs to resume where it left off,
-// besides the conversation transcript and the git snapshot refs.
 type Session struct {
 	SessionID string         `json:"session_id"`
 	Goal      string         `json:"goal"`
@@ -51,8 +49,6 @@ func Save(workspaceDir string, sess *Session, messages []llm.Message) error {
 	return writeAtomic(filepath.Join(dir, "transcript.jsonl"), transcript.Bytes())
 }
 
-// Load returns the saved session and transcript, or (nil, nil, nil) when
-// no session has been saved in this workspace.
 func Load(workspaceDir string) (*Session, []llm.Message, error) {
 	raw, err := os.ReadFile(filepath.Join(workspaceDir, dirName, "session.json"))
 	if errors.Is(err, os.ErrNotExist) {

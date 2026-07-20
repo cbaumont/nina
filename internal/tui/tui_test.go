@@ -12,8 +12,6 @@ import (
 	"github.com/cbaumont/nina/internal/workspace"
 )
 
-// glamour styles rendered text with interleaved ANSI escapes, so plain
-// substring checks on rendered output must strip them first.
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func stripANSI(s string) string {

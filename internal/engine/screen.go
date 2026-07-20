@@ -8,14 +8,7 @@ import (
 	"github.com/cbaumont/nina/internal/llm"
 )
 
-// Message screening is the engineered control against over-helping in
-// chat: at dial levels 0-1 a fast-tier model classifies each outgoing
-// navigator message during the drive/review loop, and flagged messages
-// are regenerated once. Screened messages are not streamed; they arrive
-// as a single block after passing.
 
-// SetScreener installs the fast-tier client. Without one (or at dial
-// levels 2-3) messages stream through unscreened.
 func (e *Engine) SetScreener(client llm.Client) { e.screener = client }
 
 func (e *Engine) screeningActive() bool {
@@ -33,15 +26,11 @@ func (e *Engine) leaks(ctx context.Context, text string) bool {
 	conv.AddUser(fmt.Sprintf("Current step goal:\n%s\n\nNavigator message:\n%s", goal, text))
 	turn, err := e.screener.Converse(ctx, conv, nil)
 	if err != nil {
-		// Fail open: screening is a control, not a gate on the session.
 		return false
 	}
 	return strings.Contains(strings.ToUpper(turn.Text), "LEAK")
 }
 
-// screenText returns the text to show the learner: unchanged when clean,
-// regenerated once when flagged, and delivered with a visible caution if
-// the regeneration is flagged again.
 func (e *Engine) screenText(ctx context.Context, text string) string {
 	if !e.leaks(ctx, text) {
 		return text

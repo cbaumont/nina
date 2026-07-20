@@ -37,8 +37,6 @@ const (
 	EventSessionDone EventKind = "session_done"
 	EventConfirm     EventKind = "confirm"
 	EventCommandRun  EventKind = "command_run"
-	// EventNudge is produced by the workspace watcher, not the engine:
-	// a hint that the user edited files and went idle. Display-only.
 	EventNudge EventKind = "nudge"
 )
 
@@ -51,8 +49,6 @@ type Event struct {
 	Confirm *ConfirmRequest
 }
 
-// ConfirmRequest asks the user to approve a command the model proposed.
-// The engine blocks until an answer is sent on Reply.
 type ConfirmRequest struct {
 	Command string
 	Reason  string
@@ -113,9 +109,6 @@ func (e *Engine) StepIndex() int           { return e.stepIndex }
 func (e *Engine) Goal() string             { return e.goal }
 func (e *Engine) Profile() profile.Profile { return e.profile }
 
-// UpdateProfile applies a new profile immediately: the system prompt is
-// rebuilt so the change takes effect on the next model call, and the
-// profile is persisted for this project and as the global default.
 func (e *Engine) UpdateProfile(p profile.Profile) error {
 	e.profile = p
 	e.conv.System = systemPrompt(p)
@@ -128,8 +121,6 @@ func (e *Engine) UpdateProfile(p profile.Profile) error {
 	return nil
 }
 
-// Restore rebuilds the engine from a saved session so it can continue
-// where it left off. Call before any other engine method.
 func (e *Engine) Restore(sess *state.Session, messages []llm.Message) {
 	e.sessionID = sess.SessionID
 	e.goal = sess.Goal
@@ -141,8 +132,6 @@ func (e *Engine) Restore(sess *state.Session, messages []llm.Message) {
 	e.conv.Messages = messages
 }
 
-// persist saves the session and transcript to .nina/; failures are
-// reported to the user but never interrupt the session.
 func (e *Engine) persist() {
 	sess := &state.Session{
 		SessionID: e.sessionID,
@@ -159,8 +148,6 @@ func (e *Engine) persist() {
 	}
 }
 
-// Start opens the session by proposing 2-3 project ideas. Scaffolding
-// waits until the learner picks one (see UserMessage).
 func (e *Engine) Start(ctx context.Context, goal string) error {
 	if e.state != StateIdle {
 		return fmt.Errorf("session already started")
@@ -225,8 +212,6 @@ func (e *Engine) Done(ctx context.Context) error {
 	return nil
 }
 
-// Skip abandons the current step without review: the workspace is
-// snapshotted as the new baseline and the session moves on.
 func (e *Engine) Skip(ctx context.Context) error {
 	if e.state != StateDrive {
 		return fmt.Errorf("no step in progress")
@@ -259,9 +244,6 @@ func (e *Engine) UserMessage(ctx context.Context, text string) error {
 	if _, err := e.converseLoop(ctx); err != nil {
 		return err
 	}
-	// set_plan during the propose phase moves us to scaffold (see
-	// execSetPlan); once the model finishes scaffolding in that same
-	// turn, baseline the workspace and hand the keyboard to the learner.
 	if e.state == StateScaffold {
 		if len(e.plan.Steps) == 0 {
 			e.state = StatePropose
@@ -277,8 +259,6 @@ func (e *Engine) UserMessage(ctx context.Context, text string) error {
 	return nil
 }
 
-// Summarize asks the navigator for an end-of-session learning summary
-// and saves it under .nina/ as a keepsake artifact.
 func (e *Engine) Summarize(ctx context.Context) error {
 	if e.state == StateIdle {
 		return fmt.Errorf("session not started")
@@ -306,8 +286,6 @@ func (e *Engine) Summarize(ctx context.Context) error {
 
 func (e *Engine) converseLoop(ctx context.Context) (llm.Turn, error) {
 	for {
-		// Screened messages are buffered, not streamed: the learner sees
-		// them only after the dial-leak check (design doc §4.4).
 		screening := e.screeningActive()
 		var onDelta func(string)
 		if !screening {
@@ -334,10 +312,6 @@ func (e *Engine) converseLoop(ctx context.Context) (llm.Turn, error) {
 			}
 		}
 		e.conv.AddToolResults(results)
-		// submit_review is the terminal action of a review turn (see
-		// systemPrompt's Review step); letting the model keep talking past
-		// it invites it to preview the next step's orient/instruct itself,
-		// duplicating the engine's own instructPrompt call.
 		if reviewed {
 			return turn, nil
 		}
@@ -444,9 +418,6 @@ func (e *Engine) execReadFile(call llm.ToolCall) llm.ToolResult {
 }
 
 func (e *Engine) execWriteFile(call llm.ToolCall) llm.ToolResult {
-	// The dial is enforced here, in the engine, not by prompt goodwill:
-	// levels 0-1 are hard guarantees; 2-3 permit writes and rely on the
-	// prompt-level ceiling plus the announcement below for transparency.
 	switch {
 	case e.profile.Dial == 0:
 		return llm.ToolResult{

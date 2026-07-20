@@ -72,7 +72,6 @@ func TestWatchesNewSubdirectories(t *testing.T) {
 	if err := os.MkdirAll(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// Give the watcher a moment to pick up the new directory.
 	time.Sleep(200 * time.Millisecond)
 	if err := os.WriteFile(filepath.Join(sub, "app.py"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)

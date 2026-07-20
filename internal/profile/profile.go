@@ -26,10 +26,6 @@ const (
 	HintFast   HintSpeed = "fast"
 )
 
-// Profile configures how Nina teaches: how much foundational explanation
-// to give, how the target stack relates to what the user knows, how much
-// Nina may type (the dial, a ceiling not a target), and how quickly hints
-// escalate during review.
 type Profile struct {
 	Experience     Level     `json:"experience"`
 	StackFamiliar  Level     `json:"stack_familiarity"`
@@ -83,9 +79,6 @@ func globalPath() (string, error) {
 	return filepath.Join(config, "nina", "profile.json"), nil
 }
 
-// Load returns the profile for a workspace: the project's own if present,
-// otherwise the user's global default. found reports whether either
-// existed; when false the returned profile is Default().
 func Load(workspaceDir string) (p Profile, found bool, err error) {
 	if p, ok := read(projectPath(workspaceDir)); ok {
 		return p, true, nil
@@ -110,14 +103,12 @@ func read(path string) (Profile, bool) {
 	return p, true
 }
 
-// Save writes the profile to the workspace's .nina directory and mirrors
-// it as the global default for future projects.
 func Save(workspaceDir string, p Profile) error {
 	if err := write(projectPath(workspaceDir), p); err != nil {
 		return err
 	}
 	if global, err := globalPath(); err == nil {
-		_ = write(global, p) // best effort; the project copy is authoritative
+		_ = write(global, p)
 	}
 	return nil
 }

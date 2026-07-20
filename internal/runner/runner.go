@@ -21,9 +21,6 @@ type Result struct {
 	TimedOut bool
 }
 
-// Run executes command through `sh -c` in dir, capturing combined
-// stdout/stderr (tail-capped at maxOutput). The whole process group is
-// killed when timeout elapses.
 func Run(ctx context.Context, dir, command string, timeout time.Duration) (Result, error) {
 	if timeout <= 0 {
 		timeout = DefaultTimeout
@@ -60,7 +57,6 @@ func Run(ctx context.Context, dir, command string, timeout time.Duration) (Resul
 	return result, nil
 }
 
-// tailBuffer keeps only the last `limit` bytes written to it.
 type tailBuffer struct {
 	limit     int
 	buf       []byte

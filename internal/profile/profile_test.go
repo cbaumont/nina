@@ -62,7 +62,6 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Errorf("profile = %+v, want %+v", got, prof)
 	}
 
-	// The saved profile also becomes the global default for new projects.
 	got, found, err = Load(t.TempDir())
 	if err != nil || !found {
 		t.Fatalf("global: found = %v, err = %v", found, err)
