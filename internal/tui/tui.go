@@ -323,7 +323,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var inputCmd, viewportCmd tea.Cmd
 	m.input, inputCmd = m.input.Update(msg)
-	m.viewport, viewportCmd = m.viewport.Update(msg)
+	// Viewport's default keymap steals letters like j/k/u/d/b/f and space
+	// for scrolling, which fires while the user is typing those chars into
+	// the input. Only forward non-rune keys (pgup/pgdn/home/end/arrows) so
+	// manual scroll-back still works without hijacking typing.
+	if keyMsg, ok := msg.(tea.KeyMsg); !ok || keyMsg.Type != tea.KeyRunes {
+		m.viewport, viewportCmd = m.viewport.Update(msg)
+	}
 	return m, tea.Batch(inputCmd, viewportCmd)
 }
 
