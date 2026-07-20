@@ -24,6 +24,47 @@ import (
 
 const watcherIdle = 25 * time.Second
 
+type commandInfo struct {
+	Name  string
+	Usage string
+	Desc  string
+}
+
+func (c commandInfo) display() string {
+	if c.Usage != "" {
+		return c.Usage
+	}
+	return c.Name
+}
+
+var commands = []commandInfo{
+	{Name: "/done", Desc: "review the step"},
+	{Name: "/why", Desc: "zoom out"},
+	{Name: "/stuck", Desc: "get help"},
+	{Name: "/skip", Desc: "next step"},
+	{Name: "/recap", Desc: "session recap"},
+	{Name: "/run", Usage: "/run [cmd]", Desc: "run code"},
+	{Name: "/summary", Desc: "session summary"},
+	{Name: "/copy", Desc: "copy session to clipboard"},
+	{Name: "/dial", Usage: "/dial <0-3>", Desc: "typing dial"},
+	{Name: "/profile", Desc: "adjust profile"},
+	{Name: "/help", Desc: "list commands"},
+	{Name: "/quit", Desc: "exit"},
+}
+
+func matchCommands(text string) []commandInfo {
+	if text == "/" {
+		return commands
+	}
+	var out []commandInfo
+	for _, c := range commands {
+		if strings.HasPrefix(c.Name, text) {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func Run(goal, dir string) error {
 	sess, messages, err := state.Load(dir)
 	if err != nil {
@@ -105,7 +146,9 @@ type model struct {
 	stepIndex      int
 	stepCount      int
 	width          int
+	height         int
 	ready          bool
+	suggestions    []commandInfo
 
 	renderedHistory    string
 	renderedHistorySrc string
@@ -126,8 +169,8 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		busyLabel:  "brainstorming project ideas",
 		nudgedStep: -1,
 		style:      style,
-		viewport: viewport.New(80, 20),
-		ready:    true,
+		viewport:   viewport.New(80, 20),
+		ready:      true,
 	}
 	m.renderer, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(style), glamour.WithWordWrap(78))
 	if needSetup {
@@ -192,6 +235,7 @@ func setupQuestion(index int, prof profile.Profile) string {
 }
 
 func (m *model) handleSetup(text string) (tea.Model, tea.Cmd) {
+	defer m.updateSuggestions()
 	m.input.Reset()
 	s := m.setup
 	if answer := strings.ToLower(strings.TrimSpace(text)); answer != "" {
@@ -261,17 +305,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		viewportHeight := msg.Height - 4
-		if viewportHeight < 1 {
-			viewportHeight = 1
-		}
+		m.height = msg.Height
 		if !m.ready {
-			m.viewport = viewport.New(msg.Width, viewportHeight)
+			m.viewport = viewport.New(msg.Width, msg.Height-4)
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
-			m.viewport.Height = viewportHeight
 		}
+		m.updateViewportHeight()
 		m.renderer, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(m.style), glamour.WithWordWrap(msg.Width-2))
 		m.renderedHistorySrc = ""
 		m.refreshViewport()
@@ -310,13 +351,40 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var inputCmd, viewportCmd tea.Cmd
 	m.input, inputCmd = m.input.Update(msg)
+	m.updateSuggestions()
 	if keyMsg, ok := msg.(tea.KeyMsg); !ok || keyMsg.Type != tea.KeyRunes {
 		m.viewport, viewportCmd = m.viewport.Update(msg)
 	}
 	return m, tea.Batch(inputCmd, viewportCmd)
 }
 
+func (m *model) updateSuggestions() {
+	text := m.input.Value()
+	if m.setup != nil || m.pendingConfirm != nil ||
+		!strings.HasPrefix(text, "/") || strings.ContainsAny(text, " \t") {
+		m.suggestions = nil
+	} else {
+		m.suggestions = matchCommands(text)
+	}
+	m.updateViewportHeight()
+}
+
+func (m *model) updateViewportHeight() {
+	if !m.ready {
+		return
+	}
+	h := m.height - 4
+	if len(m.suggestions) > 0 {
+		h -= len(m.suggestions) + 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	m.viewport.Height = h
+}
+
 func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
+	defer m.updateSuggestions()
 	if m.pendingConfirm != nil {
 		return m.handleConfirm(strings.ToLower(text))
 	}
@@ -401,7 +469,12 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	case "/help":
-		m.history += "\n> **Commands:** `/done` review the step · `/why` zoom out · `/stuck` get help · `/skip` next step · `/recap` session recap · `/run [cmd]` run code · `/summary` session summary · `/copy` copy session to clipboard · `/dial <0-3>` typing dial · `/profile` adjust profile · `/quit`\n"
+		var b strings.Builder
+		b.WriteString("\n> **Commands:**\n")
+		for _, c := range commands {
+			fmt.Fprintf(&b, "> - `%s` — %s\n", c.display(), c.Desc)
+		}
+		m.history += b.String()
 		m.refreshViewport()
 		return m, nil
 	default:
@@ -423,6 +496,7 @@ func (m *model) sendToNina(display, label, message string) (tea.Model, tea.Cmd) 
 }
 
 func (m *model) handleConfirm(answer string) (tea.Model, tea.Cmd) {
+	defer m.updateSuggestions()
 	req := m.pendingConfirm
 	var reply engine.ConfirmAnswer
 	switch answer {
@@ -544,6 +618,19 @@ var statusStyle = lipgloss.NewStyle().
 	Background(lipgloss.Color("62")).
 	Padding(0, 1)
 
+var (
+	suggestionCmdStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true)
+	suggestionDescStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+)
+
+func (m *model) suggestionsView() string {
+	lines := make([]string, len(m.suggestions))
+	for i, c := range m.suggestions {
+		lines[i] = "  " + suggestionCmdStyle.Render(c.display()) + "  " + suggestionDescStyle.Render(c.Desc)
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m *model) statusLine() string {
 	title := m.planTitle
 	if title == "" {
@@ -572,5 +659,9 @@ func (m *model) View() string {
 	if !m.ready {
 		return "starting nina..."
 	}
-	return m.statusLine() + "\n" + m.viewport.View() + "\n" + m.input.View()
+	view := m.statusLine() + "\n" + m.viewport.View() + "\n"
+	if len(m.suggestions) > 0 {
+		view += m.suggestionsView() + "\n"
+	}
+	return view + m.input.View()
 }
