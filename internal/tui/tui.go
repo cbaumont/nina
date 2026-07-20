@@ -76,7 +76,14 @@ func Run(goal, dir string) error {
 	}); err == nil {
 		defer w.Close()
 	}
-	program := tea.NewProgram(newModel(eng, events, goal, needSetup), tea.WithAltScreen())
+	// Detect light/dark once, before bubbletea puts stdin in raw mode: glamour's
+	// auto-style query races bubbletea's input reader for the terminal's OSC 11
+	// reply otherwise, leaking the escape sequence into the first keypress.
+	style := "dark"
+	if !lipgloss.HasDarkBackground() {
+		style = "light"
+	}
+	program := tea.NewProgram(newModel(eng, events, goal, needSetup, style), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
 }
@@ -92,6 +99,7 @@ type model struct {
 	viewport viewport.Model
 	input    textinput.Model
 	renderer *glamour.TermRenderer
+	style    string
 
 	history        string
 	streaming      strings.Builder
@@ -107,7 +115,7 @@ type model struct {
 	ready     bool
 }
 
-func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSetup bool) *model {
+func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSetup bool, style string) *model {
 	input := textinput.New()
 	input.Placeholder = "Ask Nina anything · /done when you finish a step · /help for commands (/quit to exit)"
 	input.Focus()
@@ -119,6 +127,11 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		busy:       true,
 		busyLabel:  "brainstorming project ideas",
 		nudgedStep: -1,
+		style:      style,
+		// Default size so the first frame renders immediately, before the
+		// terminal's WindowSizeMsg arrives; Update resizes it once it does.
+		viewport: viewport.New(80, 20),
+		ready:    true,
 	}
 	if needSetup {
 		m.busy = false
@@ -264,7 +277,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.viewport.Width = msg.Width
 			m.viewport.Height = viewportHeight
 		}
-		m.renderer, _ = glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(msg.Width-2))
+		m.renderer, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(m.style), glamour.WithWordWrap(msg.Width-2))
 		m.refreshViewport()
 		return m, nil
 
