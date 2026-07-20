@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/atotto/clipboard"
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -114,6 +116,7 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 	input := textinput.New()
 	input.Placeholder = "Ask Nina anything · /done when you finish a step · /help for commands (/quit to exit)"
 	input.Focus()
+	input.Cursor.SetMode(cursor.CursorStatic)
 	m := &model{
 		eng:        eng,
 		events:     events,
@@ -380,6 +383,14 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 		m.history += "\n---\n\n`/summary`\n"
 		m.refreshViewport()
 		return m, m.runOp(func() error { return m.eng.Summarize(context.Background()) })
+	case "/copy":
+		if err := clipboard.WriteAll(m.history); err != nil {
+			m.history += fmt.Sprintf("\n> **Error:** could not copy: %s\n", err)
+		} else {
+			m.history += "\n> 📋 Session copied to clipboard.\n"
+		}
+		m.refreshViewport()
+		return m, nil
 	case "/profile":
 		m.setup = &setupFlow{prof: m.eng.Profile(), editing: true}
 		m.history += "\n> Adjust your profile — press Enter to keep any current value.\n" + setupQuestion(0, m.setup.prof)
@@ -390,7 +401,7 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 		m.refreshViewport()
 		return m, nil
 	case "/help":
-		m.history += "\n> **Commands:** `/done` review the step · `/why` zoom out · `/stuck` get help · `/skip` next step · `/recap` session recap · `/run [cmd]` run code · `/summary` session summary · `/dial <0-3>` typing dial · `/profile` adjust profile · `/quit`\n"
+		m.history += "\n> **Commands:** `/done` review the step · `/why` zoom out · `/stuck` get help · `/skip` next step · `/recap` session recap · `/run [cmd]` run code · `/summary` session summary · `/copy` copy session to clipboard · `/dial <0-3>` typing dial · `/profile` adjust profile · `/quit`\n"
 		m.refreshViewport()
 		return m, nil
 	default:
