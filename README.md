@@ -69,6 +69,6 @@ Type anything else to ask Nina a question mid-step. Sessions save to `.nina/`; `
 
 Nina snapshots your progress under hidden git refs (`refs/nina/*`); your `git log` and branches stay untouched.
 
-## Contributing
+## License
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+[GPLv3](LICENSE).
