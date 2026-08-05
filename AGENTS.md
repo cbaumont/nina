@@ -15,6 +15,7 @@ Nina is a CLI AI pair-programming companion for people learning to code: the AI 
 * Read nearby source and tests first.
 * Make the smallest correct change.
 * Run relevant tests.
+* Before committing, run `gofmt -l .` and fix any files it lists (`gofmt -w`).
 * Ensure to always commit your changes.
 * Keep commit messages short, in imperative mood, and without prefixes (e.g. `Add user profile validation`).
 
