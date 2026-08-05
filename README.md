@@ -37,10 +37,16 @@ Start in an **empty directory** — Nina scaffolds the project there:
 
 ```sh
 mkdir learn-python && cd learn-python
+nina start
+```
+
+If you don't pass a goal, Nina asks for one first thing. You can still give it up front the old way:
+
+```sh
 nina start "learn Python basics"
 ```
 
-On first run Nina asks a few quick profile questions (experience, how much she may type, how fast hints escalate). She then proposes 2–3 project ideas; pick one and she checks your environment, scaffolds the project, and gives you the first step. Then loop:
+On first run Nina then asks a few quick profile questions (experience, how much she may type, how fast hints escalate). She then proposes 2–3 project ideas; pick one and she checks your environment, scaffolds the project, and gives you the first step. Then loop:
 
 1. Write the code in your own editor.
 2. Type `/done` — Nina diffs what you wrote, runs it or its tests where possible, and reviews it against the step's goal.

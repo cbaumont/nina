@@ -32,7 +32,7 @@ func newTestModel(t *testing.T) *model {
 		t.Fatal(err)
 	}
 	eng := engine.New(fakeClient{}, ws, dir, profile.Default(), func(engine.Event) {})
-	return newModel(eng, make(chan engine.Event), "learn go", false, "dark")
+	return newModel(eng, make(chan engine.Event), "learn go", false, false, "dark")
 }
 
 func TestNewModelRendersBeforeWindowSizeMsg(t *testing.T) {
@@ -81,6 +81,34 @@ func TestRefreshViewportRendersStreamingMarkdown(t *testing.T) {
 	m.refreshViewport()
 	if strings.Contains(stripANSI(m.viewport.View()), "**bold**") {
 		t.Fatalf("streaming text should be markdown-rendered while typing: %q", m.viewport.View())
+	}
+}
+
+func TestNewModelWithoutGoalAwaitsGoalFirst(t *testing.T) {
+	dir := t.TempDir()
+	ws, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := engine.New(fakeClient{}, ws, dir, profile.Default(), func(engine.Event) {})
+	m := newModel(eng, make(chan engine.Event), "", false, true, "dark")
+	if !m.awaitingGoal {
+		t.Fatal("model should await a goal when none was provided")
+	}
+	if cmd := m.Init(); cmd == nil {
+		t.Fatal("Init should still return commands (event wait, blink)")
+	}
+	if m.eng.State() != engine.StateIdle {
+		t.Fatal("engine should not start until a goal is supplied")
+	}
+
+	m2, _ := m.handleGoal("learn Go generics")
+	got := m2.(*model)
+	if got.awaitingGoal {
+		t.Fatal("awaitingGoal should clear once a goal is entered")
+	}
+	if got.goal != "learn Go generics" {
+		t.Fatalf("goal = %q, want %q", got.goal, "learn Go generics")
 	}
 }
 

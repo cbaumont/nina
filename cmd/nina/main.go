@@ -27,20 +27,21 @@ func run(args []string) error {
 		fmt.Println("nina", version)
 		return nil
 	case "start":
-		if len(args) < 2 {
-			return fmt.Errorf("start requires a learning goal, e.g. nina start \"learn Python basics\"")
+		goal := ""
+		if len(args) >= 2 {
+			goal = strings.Join(args[1:], " ")
 		}
 		dir, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		return tui.Run(strings.Join(args[1:], " "), dir)
+		return tui.Run(goal, dir, true)
 	case "resume":
 		dir, err := os.Getwd()
 		if err != nil {
 			return err
 		}
-		return tui.Run("", dir)
+		return tui.Run("", dir, false)
 	default:
 		printUsage()
 		return fmt.Errorf("unknown command %q", args[0])
@@ -51,7 +52,8 @@ func printUsage() {
 	fmt.Println(`nina — AI pair programming companion
 
 Usage:
-  nina start "<learning goal>"   begin a guided session in the current directory
+  nina start                     begin a guided session; Nina will ask for your goal first
+  nina start "<learning goal>"   begin a guided session with a goal already in hand
   nina resume                    continue the session saved in .nina/
   nina version                   print version
 

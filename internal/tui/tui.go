@@ -17,17 +17,17 @@ import (
 
 const watcherIdle = 25 * time.Second
 
-func Run(goal, dir string) error {
+func Run(goal, dir string, isStart bool) error {
 	sess, messages, err := state.Load(dir)
 	if err != nil {
 		return err
 	}
-	if goal == "" {
+	if !isStart {
 		if sess == nil {
-			return fmt.Errorf("no session to resume here; start one with nina start \"<learning goal>\"")
+			return fmt.Errorf("no session to resume here; start one with nina start")
 		}
 		if sess.State == string(engine.StateDone) {
-			return fmt.Errorf("the last session is complete; start a new one with nina start \"<learning goal>\"")
+			return fmt.Errorf("the last session is complete; start a new one with nina start")
 		}
 	} else if sess != nil && sess.State != string(engine.StateDone) {
 		return fmt.Errorf("a session is already in progress here (%s); continue it with nina resume, or delete .nina/ to start over", sess.PlanTitle)
@@ -49,7 +49,7 @@ func Run(goal, dir string) error {
 	eng := engine.New(client, ws, dir, prof, func(ev engine.Event) {
 		events <- ev
 	})
-	if goal == "" {
+	if !isStart {
 		eng.Restore(sess, messages)
 		goal = sess.Goal
 	}
@@ -57,6 +57,7 @@ func Run(goal, dir string) error {
 		eng.SetScreener(screener)
 	}
 	needSetup := !profileFound && sess == nil
+	needGoal := isStart && goal == ""
 	if w, err := watcher.Start(dir, watcherIdle, func() {
 		select {
 		case events <- engine.Event{Kind: engine.EventNudge}:
@@ -69,7 +70,7 @@ func Run(goal, dir string) error {
 	if !lipgloss.HasDarkBackground() {
 		style = "light"
 	}
-	program := tea.NewProgram(newModel(eng, events, goal, needSetup, style), tea.WithAltScreen())
+	program := tea.NewProgram(newModel(eng, events, goal, needSetup, needGoal, style), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
 }

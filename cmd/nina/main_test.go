@@ -11,7 +11,6 @@ func TestRun(t *testing.T) {
 		{"no args prints usage", nil, false},
 		{"version", []string{"version"}, false},
 		{"unknown command", []string{"bogus"}, true},
-		{"start without goal", []string{"start"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

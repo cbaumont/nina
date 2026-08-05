@@ -37,6 +37,32 @@ func setupQuestion(index int, prof profile.Profile) string {
 	}
 }
 
+func (m *model) handleGoal(text string) (tea.Model, tea.Cmd) {
+	defer m.updateSuggestions()
+	m.input.Reset()
+	text = strings.TrimSpace(text)
+	if text == "" {
+		m.history += "\n> Please tell Nina what you'd like to learn or build.\n"
+		m.refreshViewport()
+		return m, nil
+	}
+	m.goal = text
+	m.awaitingGoal = false
+	if m.setupAfterGoal {
+		m.setupAfterGoal = false
+		m.setup = &setupFlow{prof: m.eng.Profile()}
+		m.history += "\n> A quick minute of setup so Nina can teach at your level — press Enter to keep any default.\n" + setupQuestion(0, m.setup.prof)
+		m.refreshViewport()
+		return m, nil
+	}
+	m.busy = true
+	m.busyLabel = "brainstorming project ideas"
+	m.refreshViewport()
+	return m, m.runOp(func() error {
+		return m.eng.Start(context.Background(), m.goal)
+	})
+}
+
 func (m *model) handleSetup(text string) (tea.Model, tea.Cmd) {
 	defer m.updateSuggestions()
 	m.input.Reset()

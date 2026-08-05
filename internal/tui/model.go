@@ -34,6 +34,8 @@ type model struct {
 	pendingConfirm *engine.ConfirmRequest
 	nudgedStep     int
 	setup          *setupFlow
+	awaitingGoal   bool
+	setupAfterGoal bool
 	planTitle      string
 	stepIndex      int
 	stepCount      int
@@ -47,7 +49,7 @@ type model struct {
 	historyRenderCount int
 }
 
-func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSetup bool, style string) *model {
+func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSetup, needGoal bool, style string) *model {
 	input := textinput.New()
 	input.Placeholder = "Ask Nina anything · /done when you finish a step · /help for commands (/quit to exit)"
 	input.Focus()
@@ -65,7 +67,13 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		ready:      true,
 	}
 	m.renderer, _ = glamour.NewTermRenderer(glamour.WithStandardStyle(style), glamour.WithWordWrap(78))
-	if needSetup {
+	if needGoal {
+		m.busy = false
+		m.busyLabel = ""
+		m.awaitingGoal = true
+		m.setupAfterGoal = needSetup
+		m.history = "## Welcome to Nina 👋\n\nWhat would you like to learn or build? Tell Nina your goal — you can always refine it later.\n"
+	} else if needSetup {
 		m.busy = false
 		m.busyLabel = ""
 		m.setup = &setupFlow{prof: eng.Profile()}
@@ -91,7 +99,7 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 
 func (m *model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.waitForEvent(), textinput.Blink}
-	if m.eng.State() == engine.StateIdle && m.setup == nil {
+	if m.eng.State() == engine.StateIdle && m.setup == nil && !m.awaitingGoal {
 		cmds = append(cmds, m.runOp(func() error {
 			return m.eng.Start(context.Background(), m.goal)
 		}))

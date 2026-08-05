@@ -73,7 +73,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) updateSuggestions() {
 	text := m.input.Value()
-	if m.setup != nil || m.pendingConfirm != nil ||
+	if m.setup != nil || m.awaitingGoal || m.pendingConfirm != nil ||
 		!strings.HasPrefix(text, "/") || strings.ContainsAny(text, " \t") {
 		m.suggestions = nil
 	} else {
@@ -100,6 +100,9 @@ func (m *model) handleInput(text string) (tea.Model, tea.Cmd) {
 	defer m.updateSuggestions()
 	if m.pendingConfirm != nil {
 		return m.handleConfirm(strings.ToLower(text))
+	}
+	if m.awaitingGoal {
+		return m.handleGoal(text)
 	}
 	if m.setup != nil {
 		return m.handleSetup(text)
