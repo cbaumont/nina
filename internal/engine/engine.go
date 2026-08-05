@@ -37,7 +37,7 @@ const (
 	EventSessionDone EventKind = "session_done"
 	EventConfirm     EventKind = "confirm"
 	EventCommandRun  EventKind = "command_run"
-	EventNudge EventKind = "nudge"
+	EventNudge       EventKind = "nudge"
 )
 
 type Event struct {

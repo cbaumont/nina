@@ -8,7 +8,6 @@ import (
 	"github.com/cbaumont/nina/internal/llm"
 )
 
-
 func (e *Engine) SetScreener(client llm.Client) { e.screener = client }
 
 func (e *Engine) screeningActive() bool {
