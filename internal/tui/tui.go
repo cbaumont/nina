@@ -45,6 +45,13 @@ func Run(goal, dir string, isStart bool) error {
 	if err != nil {
 		return err
 	}
+	var priorHistory string
+	if !isStart {
+		priorHistory, err = state.LoadHistory(dir)
+		if err != nil {
+			return err
+		}
+	}
 	events := make(chan engine.Event, 64)
 	eng := engine.New(client, ws, dir, prof, func(ev engine.Event) {
 		events <- ev
@@ -70,7 +77,7 @@ func Run(goal, dir string, isStart bool) error {
 	if !lipgloss.HasDarkBackground() {
 		style = "light"
 	}
-	program := tea.NewProgram(newModel(eng, events, goal, needSetup, needGoal, style), tea.WithAltScreen())
+	program := tea.NewProgram(newModel(eng, events, goal, dir, needSetup, needGoal, priorHistory, style), tea.WithAltScreen())
 	_, err = program.Run()
 	return err
 }

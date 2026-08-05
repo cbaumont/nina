@@ -98,6 +98,25 @@ func loadTranscript(path string) ([]llm.Message, error) {
 	return messages, nil
 }
 
+func SaveHistory(workspaceDir, text string) error {
+	dir := filepath.Join(workspaceDir, dirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(dir, "history.md"), []byte(text))
+}
+
+func LoadHistory(workspaceDir string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(workspaceDir, dirName, "history.md"))
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
 func writeAtomic(path string, data []byte) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {

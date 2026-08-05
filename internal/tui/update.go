@@ -50,6 +50,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.history += fmt.Sprintf("\n> **Error:** %s\n", msg.err)
 		}
+		m.persistHistory()
 		m.refreshViewport()
 		return m, nil
 

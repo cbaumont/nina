@@ -9,6 +9,7 @@ import (
 	"github.com/cbaumont/nina/internal/engine"
 	"github.com/cbaumont/nina/internal/llm"
 	"github.com/cbaumont/nina/internal/profile"
+	"github.com/cbaumont/nina/internal/state"
 	"github.com/cbaumont/nina/internal/workspace"
 )
 
@@ -32,7 +33,7 @@ func newTestModel(t *testing.T) *model {
 		t.Fatal(err)
 	}
 	eng := engine.New(fakeClient{}, ws, dir, profile.Default(), func(engine.Event) {})
-	return newModel(eng, make(chan engine.Event), "learn go", false, false, "dark")
+	return newModel(eng, make(chan engine.Event), "learn go", dir, false, false, "", "dark")
 }
 
 func TestNewModelRendersBeforeWindowSizeMsg(t *testing.T) {
@@ -91,7 +92,7 @@ func TestNewModelWithoutGoalAwaitsGoalFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	eng := engine.New(fakeClient{}, ws, dir, profile.Default(), func(engine.Event) {})
-	m := newModel(eng, make(chan engine.Event), "", false, true, "dark")
+	m := newModel(eng, make(chan engine.Event), "", dir, false, true, "", "dark")
 	if !m.awaitingGoal {
 		t.Fatal("model should await a goal when none was provided")
 	}
@@ -109,6 +110,32 @@ func TestNewModelWithoutGoalAwaitsGoalFirst(t *testing.T) {
 	}
 	if got.goal != "learn Go generics" {
 		t.Fatalf("goal = %q, want %q", got.goal, "learn Go generics")
+	}
+}
+
+func TestNewModelOnResumeShowsPriorHistory(t *testing.T) {
+	dir := t.TempDir()
+	ws, err := workspace.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng := engine.New(fakeClient{}, ws, dir, profile.Default(), func(engine.Event) {})
+	eng.Restore(&state.Session{
+		SessionID: "20260805-000000",
+		Goal:      "learn go",
+		State:     "drive",
+		PlanTitle: "Guessing Game",
+		Steps:     []llm.PlanStep{{Title: "Read input", Goal: "reads a number"}},
+		StepIndex: 0,
+	}, nil)
+
+	priorHistory := "## Guessing Game\n\n1. Read input\n\nNina: let's get started.\n"
+	m := newModel(eng, make(chan engine.Event), "learn go", dir, false, false, priorHistory, "dark")
+	if !strings.Contains(m.history, priorHistory) {
+		t.Fatalf("resumed history should include what happened before, got %q", m.history)
+	}
+	if !strings.Contains(m.history, "Session resumed") {
+		t.Fatalf("resumed history should still note where the session picks up, got %q", m.history)
 	}
 }
 

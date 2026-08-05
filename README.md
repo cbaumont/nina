@@ -52,7 +52,7 @@ On first run Nina then asks a few quick profile questions (experience, how much 
 2. Type `/done` — Nina diffs what you wrote, runs it or its tests where possible, and reviews it against the step's goal.
 3. Pass → next step. Not quite → a Socratic nudge, try again.
 
-Type anything else to ask Nina a question mid-step. Sessions save to `.nina/` — `nina resume` continues an interrupted one, and finishing (or `/summary`) writes a learning recap there.
+Type anything else to ask Nina a question mid-step. Sessions save to `.nina/` — `nina resume` continues an interrupted one by reprinting the full conversation so far before picking up where you left off, and finishing (or `/summary`) writes a learning recap there.
 
 **Commands:** `/done` · `/why` · `/stuck` · `/skip` · `/recap` · `/run [cmd]` · `/summary` · `/dial <0-3>` · `/profile` · `/help` · `/quit`
 

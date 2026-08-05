@@ -57,6 +57,39 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLoadHistoryWithoutFile(t *testing.T) {
+	history, err := LoadHistory(t.TempDir())
+	if history != "" || err != nil {
+		t.Errorf("got %q, %v", history, err)
+	}
+}
+
+func TestSaveLoadHistoryRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	text := "## Guessing Game\n\nStep 1: read input\n"
+	if err := SaveHistory(dir, text); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadHistory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != text {
+		t.Errorf("history = %q, want %q", got, text)
+	}
+
+	if err := SaveHistory(dir, "replaced"); err != nil {
+		t.Fatal(err)
+	}
+	got, err = LoadHistory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "replaced" {
+		t.Errorf("history = %q, want %q", got, "replaced")
+	}
+}
+
 func TestSaveOverwrites(t *testing.T) {
 	dir := t.TempDir()
 	if err := Save(dir, &Session{StepIndex: 0}, []llm.Message{{Role: "user", Text: "a"}}); err != nil {

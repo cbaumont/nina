@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/glamour"
 
 	"github.com/cbaumont/nina/internal/engine"
+	"github.com/cbaumont/nina/internal/state"
 )
 
 type engineEventMsg engine.Event
@@ -22,6 +23,7 @@ type model struct {
 	eng      *engine.Engine
 	events   chan engine.Event
 	goal     string
+	dir      string
 	viewport viewport.Model
 	input    textinput.Model
 	renderer *glamour.TermRenderer
@@ -49,7 +51,7 @@ type model struct {
 	historyRenderCount int
 }
 
-func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSetup, needGoal bool, style string) *model {
+func newModel(eng *engine.Engine, events chan engine.Event, goal, dir string, needSetup, needGoal bool, priorHistory, style string) *model {
 	input := textinput.New()
 	input.Placeholder = "Ask Nina anything · /done when you finish a step · /help for commands (/quit to exit)"
 	input.Focus()
@@ -58,6 +60,7 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		eng:        eng,
 		events:     events,
 		goal:       goal,
+		dir:        dir,
 		input:      input,
 		busy:       true,
 		busyLabel:  "brainstorming project ideas",
@@ -86,15 +89,28 @@ func newModel(eng *engine.Engine, events chan engine.Event, goal string, needSet
 		m.stepIndex = eng.StepIndex()
 		m.busy = false
 		m.busyLabel = ""
+		var resumed string
 		if m.stepIndex < len(plan.Steps) {
 			step := plan.Steps[m.stepIndex]
-			m.history = fmt.Sprintf("## %s\n\n▶️ **Session resumed** at step %d/%d: %s\n\nStep goal: %s\n\nKeep working in your editor and `/done` when ready — or ask Nina to remind you where you left off.\n",
+			resumed = fmt.Sprintf("## %s\n\n▶️ **Session resumed** at step %d/%d: %s\n\nStep goal: %s\n\nKeep working in your editor and `/done` when ready — or ask Nina to remind you where you left off.\n",
 				plan.Title, m.stepIndex+1, m.stepCount, step.Title, step.Goal)
 		} else {
-			m.history = "▶️ **Session resumed** — you were still choosing a project. Ask Nina to repeat the ideas, or tell it what you'd like to build.\n"
+			resumed = "▶️ **Session resumed** — you were still choosing a project. Ask Nina to repeat the ideas, or tell it what you'd like to build.\n"
+		}
+		if priorHistory != "" {
+			m.history = priorHistory + "\n---\n" + resumed
+		} else {
+			m.history = resumed
 		}
 	}
 	return m
+}
+
+func (m *model) persistHistory() {
+	if m.dir == "" {
+		return
+	}
+	_ = state.SaveHistory(m.dir, m.history)
 }
 
 func (m *model) Init() tea.Cmd {
