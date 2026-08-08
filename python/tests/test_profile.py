@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from nina import profile
+from nina.system import profile
 
 
 def test_parse_validation() -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 
-from nina.tools import PlanStep
+from nina.agent.tools import PlanStep
 
 STATE_IDLE = "idle"
 STATE_PROPOSE = "propose"

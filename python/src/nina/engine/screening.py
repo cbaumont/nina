@@ -5,7 +5,7 @@ from collections.abc import Awaitable, Callable
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
-from nina.events import STATE_DRIVE
+from nina.engine.events import STATE_DRIVE
 
 _FENCED_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.S)
 
@@ -43,10 +43,7 @@ async def leaks(step_goal: str, text: str) -> bool:
     if "```" not in text:
         return False
     code_lines = sum(
-        1
-        for block in _FENCED_BLOCK_RE.findall(text)
-        for line in block.splitlines()
-        if line.strip()
+        1 for block in _FENCED_BLOCK_RE.findall(text) for line in block.splitlines() if line.strip()
     )
     if code_lines <= 1:
         return False

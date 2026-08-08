@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from nina import screening
-from nina.events import STATE_DRIVE, STATE_SCAFFOLD
+from nina.engine import screening
+from nina.engine.events import STATE_DRIVE, STATE_SCAFFOLD
 
 
 def test_is_active_only_at_low_dial_in_drive() -> None:

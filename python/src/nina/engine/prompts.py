@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from nina.profile import (
+from nina.agent.tools import PlanStep
+from nina.system.profile import (
     HINT_FAST,
     HINT_SLOW,
     LEVEL_BEGINNER,
@@ -9,7 +10,6 @@ from nina.profile import (
     LEVEL_PROFESSIONAL,
     Profile,
 )
-from nina.tools import PlanStep
 
 PROMPT_VERSION = "v3"
 

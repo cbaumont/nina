@@ -5,12 +5,12 @@ from pathlib import Path
 
 from textual.widgets import Static
 
+from nina.agent.tools import TOOL_RUN_COMMAND, TOOL_SET_PLAN, TOOL_WRITE_FILE
 from nina.engine import Engine, new_engine
-from nina.events import STATE_DRIVE, STATE_PROPOSE
-from nina.profile import default as default_profile
-from nina.tools import TOOL_RUN_COMMAND, TOOL_SET_PLAN, TOOL_WRITE_FILE
+from nina.engine.events import STATE_DRIVE, STATE_PROPOSE
+from nina.system.profile import default as default_profile
+from nina.system.workspace import open_workspace
 from nina.tui.app import NinaApp
-from nina.workspace import open_workspace
 from tests.fakes import FakeAgentSession, ScriptedToolCall, ScriptedTurn
 
 

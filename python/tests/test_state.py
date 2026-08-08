@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from nina import state
-from nina.tools import PlanStep
+from nina.agent.tools import PlanStep
+from nina.system import state
 
 
 def test_load_without_session(tmp_path: Path) -> None:

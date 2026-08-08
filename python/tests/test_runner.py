@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from nina.runner import MAX_OUTPUT, run
+from nina.system.runner import MAX_OUTPUT, run
 
 
 async def test_run_captures_output_and_exit_code(tmp_path: Path) -> None:

@@ -4,7 +4,7 @@ import queue
 import time
 from pathlib import Path
 
-from nina.watcher import Watcher
+from nina.system.watcher import Watcher
 
 IDLE = 0.1
 

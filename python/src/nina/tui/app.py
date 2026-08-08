@@ -8,7 +8,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Input, RichLog, Static
 
 from nina.engine import Engine, RateLimitExceeded
-from nina.events import (
+from nina.engine.events import (
     EVENT_COMMAND_RUN,
     EVENT_CONFIRM,
     EVENT_INFO,
@@ -24,12 +24,12 @@ from nina.events import (
     ConfirmRequest,
     Event,
 )
-from nina.profile import parse_dial
-from nina.state import save_history
+from nina.system.profile import parse_dial
+from nina.system.state import save_history
+from nina.system.watcher import Watcher
 from nina.tui.commands import COMMANDS
 from nina.tui.commands import match_commands as match_slash_commands
 from nina.tui.setup import SETUP_QUESTIONS, SetupFlow, apply_setup_answer, setup_question
-from nina.watcher import Watcher
 
 WATCH_IDLE_SECONDS = 25.0
 

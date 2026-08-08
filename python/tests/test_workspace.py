@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from nina.workspace import open_workspace, snapshot_ref
+from nina.system.workspace import open_workspace, snapshot_ref
 
 
 def git_output(dir: Path, *args: str) -> str:

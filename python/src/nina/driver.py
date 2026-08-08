@@ -5,7 +5,7 @@ import sys
 
 from nina.agent.claude_sdk import ClaudeSdkAgentSession
 from nina.engine import Engine, RateLimitExceeded, new_engine
-from nina.events import (
+from nina.engine.events import (
     EVENT_COMMAND_RUN,
     EVENT_CONFIRM,
     EVENT_INFO,
@@ -17,8 +17,8 @@ from nina.events import (
     ConfirmAnswer,
     Event,
 )
-from nina.profile import default as default_profile
-from nina.workspace import open_workspace
+from nina.system.profile import default as default_profile
+from nina.system.workspace import open_workspace
 
 
 def _print_event(event: Event) -> None:

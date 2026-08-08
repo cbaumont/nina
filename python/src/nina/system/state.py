@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from nina.tools import PlanStep
+from nina.agent.tools import PlanStep
 
 DIR_NAME = ".nina"
 

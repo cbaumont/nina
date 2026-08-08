@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from nina import credentials
 from nina.agent.claude_sdk import ClaudeSdkAgentSession
 from nina.engine import new_engine
-from nina.events import STATE_DONE
-from nina.profile import load as load_profile
-from nina.state import load as load_session
-from nina.state import load_history
+from nina.engine.events import STATE_DONE
+from nina.system import credentials
+from nina.system.profile import load as load_profile
+from nina.system.state import load as load_session
+from nina.system.state import load_history
+from nina.system.workspace import open_workspace
 from nina.tui.app import NinaApp
-from nina.workspace import open_workspace
 
 
 def run(goal: str, dir: str, is_start: bool) -> None:

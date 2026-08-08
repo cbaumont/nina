@@ -6,10 +6,20 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from nina import profile as profile_module
-from nina import prompts, runner, screening, state
 from nina.agent.session import AgentSession, RateLimited, TextDelta, ToolHandler, TurnComplete
-from nina.events import (
+from nina.agent.tools import (
+    TOOL_READ_FILE,
+    TOOL_RUN_COMMAND,
+    TOOL_SET_PLAN,
+    TOOL_SUBMIT_REVIEW,
+    TOOL_UPDATE_PLAN,
+    TOOL_WRITE_FILE,
+    SubmitReviewInput,
+    ToolResult,
+    plan_steps_from,
+)
+from nina.engine import prompts, screening
+from nina.engine.events import (
     EVENT_COMMAND_RUN,
     EVENT_CONFIRM,
     EVENT_INFO,
@@ -28,20 +38,11 @@ from nina.events import (
     Event,
     Plan,
 )
-from nina.profile import Profile
-from nina.runner import Result
-from nina.tools import (
-    TOOL_READ_FILE,
-    TOOL_RUN_COMMAND,
-    TOOL_SET_PLAN,
-    TOOL_SUBMIT_REVIEW,
-    TOOL_UPDATE_PLAN,
-    TOOL_WRITE_FILE,
-    SubmitReviewInput,
-    ToolResult,
-    plan_steps_from,
-)
-from nina.workspace import Workspace, snapshot_ref
+from nina.system import profile as profile_module
+from nina.system import runner, state
+from nina.system.profile import Profile
+from nina.system.runner import Result
+from nina.system.workspace import Workspace, snapshot_ref
 
 COMMAND_TIMEOUT = 120.0
 MAX_READ_FILE_BYTES = 32 * 1024

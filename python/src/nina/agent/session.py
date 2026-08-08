@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from nina.tools import ToolResult
+from nina.agent.tools import ToolResult
 
 ToolHandler = Callable[[dict[str, object]], Awaitable[ToolResult]]
 

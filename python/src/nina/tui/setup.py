@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nina.profile import Profile, parse_dial, parse_hint_speed, parse_level
+from nina.system.profile import Profile, parse_dial, parse_hint_speed, parse_level
 
 SETUP_QUESTIONS = 5
 

@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from nina import screening as screening_module
-from nina import state
+from nina.agent.tools import TOOL_SET_PLAN, TOOL_SUBMIT_REVIEW, TOOL_WRITE_FILE
 from nina.engine import Engine, RateLimitExceeded, new_engine
-from nina.events import (
+from nina.engine import screening as screening_module
+from nina.engine.events import (
     EVENT_COMMAND_RUN,
     EVENT_CONFIRM,
     EVENT_INFO,
@@ -23,9 +23,9 @@ from nina.events import (
     ConfirmAnswer,
     Event,
 )
-from nina.profile import default as default_profile
-from nina.tools import TOOL_SET_PLAN, TOOL_SUBMIT_REVIEW, TOOL_WRITE_FILE
-from nina.workspace import open_workspace
+from nina.system import state
+from nina.system.profile import default as default_profile
+from nina.system.workspace import open_workspace
 from tests.fakes import FakeAgentSession, ScriptedToolCall, ScriptedTurn
 
 

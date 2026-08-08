@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from nina import credentials
+from nina.system import credentials
 
 
 def _run(returncode: int = 0, stdout: str = "{}") -> Any:

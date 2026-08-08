@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from nina.agent.session import AgentEvent, RateLimited, TextDelta, ToolHandler, TurnComplete
-from nina.tools import TOOL_SUBMIT_REVIEW
+from nina.agent.tools import TOOL_SUBMIT_REVIEW
 
 
 @dataclass

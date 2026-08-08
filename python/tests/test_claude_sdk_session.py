@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from nina.agent.claude_sdk import ClaudeSdkAgentSession
-from nina.tools import TOOL_SPECS, ToolResult
+from nina.agent.tools import TOOL_SPECS, ToolResult
 
 
 async def _handler(args: dict[str, object]) -> ToolResult:

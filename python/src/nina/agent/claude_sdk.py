@@ -15,9 +15,9 @@ from claude_agent_sdk import (
     tool,
 )
 
-from nina import state
 from nina.agent.session import AgentEvent, RateLimited, TextDelta, ToolHandler, TurnComplete
-from nina.tools import TOOL_SPECS
+from nina.agent.tools import TOOL_SPECS
+from nina.system import state
 
 MAX_TURNS = 40
 
