@@ -1,0 +1,56 @@
+# Nina (Python)
+
+Nina is an AI pair-programming companion for people who want to *learn* to code, not just have code written for them. Nina is the navigator: she plans a small learning project, explains what to do and why, and reviews what you wrote. You are the driver: you type the code in your own editor. A "typing dial" enforced by the engine (not by asking the model nicely) guarantees Nina can't just do it for you.
+
+This is the Python port, built on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview). It runs on top of your local `claude` CLI install and uses whatever credential that CLI already has — including a Claude subscription login, not just an API key. If you're logged into Claude Code with `claude login`, Nina just works; API key, Amazon Bedrock, and Google Vertex auth are equally supported, since Nina is simply the credential the CLI resolves.
+
+## Install
+
+Requires [uv](https://docs.astral.sh/uv/) and the [Claude Code CLI](https://docs.claude.com/en/docs/claude-code) (`claude`) logged in or otherwise authenticated.
+
+```sh
+git clone https://github.com/cbaumont/nina
+cd nina/python
+uv sync
+```
+
+Run it with `uv run nina` (the console script is named `nina`, same as the Go build — if both are on your `PATH`, be explicit about which one you're invoking during development).
+
+## Use
+
+Start in an **empty directory**: Nina scaffolds the project there:
+
+```sh
+mkdir learn-python && cd learn-python
+uv run --project /path/to/nina/python nina start
+```
+
+If you don't pass a goal, Nina asks for one first thing. You can still give it up front the old way:
+
+```sh
+uv run --project /path/to/nina/python nina start "learn Python basics"
+```
+
+On first run Nina then asks a few quick profile questions (experience, how much she may type, how fast hints escalate). She then proposes 2–3 project ideas; pick one and she checks your environment, scaffolds the project, and gives you the first step. Then loop:
+
+1. Write the code in your own editor.
+2. Type `/done`: Nina diffs what you wrote, runs it or its tests where possible, and reviews it against the step's goal.
+3. Pass → next step. Not quite → a Socratic nudge, try again.
+
+Type anything else to ask Nina a question mid-step. Sessions save to `.nina/`; `nina resume` continues an interrupted session, including its actual conversation memory — not just Nina's plan/step bookkeeping — by resuming the underlying Claude Agent SDK session. Finishing (or `/summary`) writes a learning recap to `.nina/` too.
+
+**Commands:** `/done` · `/why` · `/stuck` · `/skip` · `/recap` · `/run [cmd]` · `/summary` · `/dial <0-3>` · `/profile` · `/help` · `/quit`
+
+**The typing dial** is a ceiling on what Nina may write, enforced by the engine: `0` nothing, `1` project scaffold only (default), `2` + boilerplate, `3` collaborative. At levels 0–1 a fast model additionally screens Nina's messages so she doesn't paste the solution into chat.
+
+If you sit idle with uncommitted changes in your editor for a while, Nina will nudge you to run `/done` when you're ready for a review.
+
+Nina snapshots your progress under hidden git refs (`refs/nina/*`); your `git log` and branches stay untouched.
+
+## Credentials
+
+Nina never touches your credentials directly — it spawns the `claude` CLI as a subprocess and inherits whatever auth that CLI already resolved (subscription login, `ANTHROPIC_API_KEY`, Bedrock, or Vertex). On startup Nina runs `claude auth status` and tells you which one is in play. If `ANTHROPIC_API_KEY` is set in your environment, be aware it takes precedence over a subscription login — Nina will warn you when that's the case, since the key silently wins and draws from your API balance instead of your subscription.
+
+## License
+
+[GPLv3](../LICENSE).

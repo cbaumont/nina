@@ -2,6 +2,8 @@
 
 Nina is an AI pair-programming companion for people who want to *learn* to code, not just have code written for them. Nina is the navigator: she plans a small learning project, explains what to do and why, and reviews what you wrote. You are the driver: you type the code in your own editor. A "typing dial" enforced by the engine (not by asking the model nicely) guarantees Nina can't just do it for you.
 
+> This Go implementation is frozen and being phased out. See [`python/README.md`](python/README.md) for the actively developed Python port, which runs on a Claude subscription login instead of requiring an API key.
+
 ## Install
 
 Requires Go 1.25+ and git.
