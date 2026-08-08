@@ -5,6 +5,8 @@ from collections.abc import Awaitable, Callable
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
+from nina.agent import ollama
+from nina.agent.model import is_ollama, ollama_model_name
 from nina.engine.events import STATE_DRIVE
 
 _FENCED_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.S)
@@ -39,7 +41,7 @@ def is_active(dial: int, state: str) -> bool:
     return dial <= 1 and state == STATE_DRIVE
 
 
-async def leaks(step_goal: str, text: str) -> bool:
+async def leaks(step_goal: str, text: str, model: str | None = None) -> bool:
     if "```" not in text:
         return False
     code_lines = sum(
@@ -48,24 +50,30 @@ async def leaks(step_goal: str, text: str) -> bool:
     if code_lines <= 1:
         return False
     prompt = f"Current step goal:\n{step_goal}\n\nNavigator message:\n{text}"
-    options = ClaudeAgentOptions(
-        system_prompt=SCREEN_SYSTEM_PROMPT, model=SCREEN_MODEL, max_turns=1
-    )
-    reply = ""
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, AssistantMessage):
-            reply += "".join(
-                block.text for block in message.content if isinstance(block, TextBlock)
-            )
+    if is_ollama(model):
+        assert model is not None
+        reply = await ollama.classify(SCREEN_SYSTEM_PROMPT, prompt, ollama_model_name(model))
+    else:
+        options = ClaudeAgentOptions(
+            system_prompt=SCREEN_SYSTEM_PROMPT, model=SCREEN_MODEL, max_turns=1
+        )
+        reply = ""
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                reply += "".join(
+                    block.text for block in message.content if isinstance(block, TextBlock)
+                )
     return "LEAK" in reply.upper()
 
 
-async def screen_text(step_goal: str, text: str, rewrite: Callable[[str], Awaitable[str]]) -> str:
-    if not await leaks(step_goal, text):
+async def screen_text(
+    step_goal: str, text: str, rewrite: Callable[[str], Awaitable[str]], model: str | None = None
+) -> str:
+    if not await leaks(step_goal, text, model):
         return text
     rewritten = await rewrite(REWRITE_NOTE)
     if rewritten.strip() == "":
         return text
-    if await leaks(step_goal, rewritten):
+    if await leaks(step_goal, rewritten, model):
         return LEAK_WARNING + rewritten
     return rewritten

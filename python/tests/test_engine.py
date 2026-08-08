@@ -435,7 +435,7 @@ async def test_screening_buffers_deltas_and_blocks_tools_during_rewrite(
 ) -> None:
     leak_calls = iter([True, False])
 
-    async def fake_leaks(step_goal: str, text: str) -> bool:
+    async def fake_leaks(step_goal: str, text: str, model: str | None = None) -> bool:
         return next(leak_calls)
 
     monkeypatch.setattr(screening_module, "leaks", fake_leaks)
@@ -462,7 +462,7 @@ async def test_screening_buffers_deltas_and_blocks_tools_during_rewrite(
 async def test_screening_inactive_streams_deltas_live(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async def fail_if_called(step_goal: str, text: str) -> bool:
+    async def fail_if_called(step_goal: str, text: str, model: str | None = None) -> bool:
         raise AssertionError("leaks() should not run when screening is inactive")
 
     monkeypatch.setattr(screening_module, "leaks", fail_if_called)

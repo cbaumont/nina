@@ -41,6 +41,14 @@ Type anything else to ask Nina a question mid-step. Sessions save to `.nina/`; `
 
 Pass `--model` to pick which model Nina runs on, e.g. `nina start --model opus "learn Python basics"` (accepts `sonnet`, `opus`, `haiku`, `inherit`, or a full model ID; defaults to the Claude CLI's default). The choice is remembered in `.nina/session.json`, so `nina resume` continues on the same model.
 
+## Local models via Ollama
+
+Pass `--model ollama:<model>` to skip Claude entirely and run Nina against a local model served by [Ollama](https://ollama.com), e.g. `nina start --model ollama:qwen3:8b "learn Python basics"`. This needs `ollama serve` running and the model already pulled; no Claude credential is required or touched. The model needs tool-calling support (Ollama's `tools` API) to drive Nina's plan/write/review loop — most recent instruction-tuned models qualify.
+
+Set `NINA_OLLAMA_HOST` to point at a non-default Ollama host (default `http://localhost:11434`) and `NINA_OLLAMA_NUM_CTX` to override the context window size (default `16384`). The dial-enforced screening classifier also runs on the same local model when the session is on Ollama, so no Claude call happens at any point in an Ollama-backed session.
+
+`nina resume` on an Ollama session replays the saved `.nina/transcript.jsonl` back into a fresh conversation to restore context — there's no server-side session to resume against, unlike the Claude Agent SDK path.
+
 **Commands:** `/done` · `/why` · `/stuck` · `/skip` · `/recap` · `/run [cmd]` · `/summary` · `/dial <0-3>` · `/profile` · `/help` · `/quit`
 
 **The typing dial** is a ceiling on what Nina may write, enforced by the engine: `0` nothing, `1` project scaffold only (default), `2` + boilerplate, `3` collaborative. At levels 0–1 a fast model additionally screens Nina's messages so she doesn't paste the solution into chat.

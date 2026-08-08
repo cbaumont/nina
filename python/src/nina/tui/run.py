@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nina.agent.claude_sdk import ClaudeSdkAgentSession
+from nina.agent.factory import session_factory
 from nina.engine import new_engine
 from nina.engine.events import STATE_DONE
 from nina.system import credentials
@@ -36,7 +36,7 @@ def run(goal: str, dir: str, is_start: bool, model: str | None = None) -> None:
         dir,
         prof,
         lambda ev: None,
-        lambda sp, h: ClaudeSdkAgentSession(sp, dir, h, resume=resume_id, model=model),
+        session_factory(dir, model, resume=resume_id, replay_history=not is_start),
         model=model,
     )
     if not is_start:

@@ -268,7 +268,7 @@ class Engine:
         step_goal = ""
         if self.step_index < len(self.plan.steps):
             step_goal = self.plan.steps[self.step_index].goal
-        shown = await screening.screen_text(step_goal, full_text, self._rewrite)
+        shown = await screening.screen_text(step_goal, full_text, self._rewrite, self.model)
         self.emit(Event(kind=EVENT_TEXT_DELTA, text=shown))
         return full_text
 

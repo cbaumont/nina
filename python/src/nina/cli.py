@@ -62,10 +62,13 @@ def _print_usage() -> None:
         '  nina start "<learning goal>"   begin a guided session with a goal already in hand\n'
         "  nina start --model opus ...    use a specific model (sonnet, opus, haiku, or a full\n"
         "                                  model ID); remembered for nina resume\n"
+        "  nina start --model ollama:<m>  run entirely on a local model via `ollama serve`\n"
+        "                                  (set NINA_OLLAMA_HOST to override localhost:11434)\n"
         "  nina resume                    continue the session saved in .nina/\n"
         "  nina version                   print version\n\n"
         "Nina runs on top of your local Claude Code install and uses whatever\n"
-        "credential it already has — including a Claude subscription login."
+        "credential it already has — including a Claude subscription login. Use\n"
+        "--model ollama:<model> to skip Claude entirely and run on a local Ollama model."
     )
 
 

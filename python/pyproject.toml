@@ -8,6 +8,7 @@ dependencies = [
     "textual>=0.60",
     "watchdog>=4.0",
     "pyperclip>=1.9",
+    "httpx>=0.28.1",
 ]
 
 [project.scripts]

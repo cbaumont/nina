@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -69,6 +70,20 @@ def append_transcript(workspace_dir: str, entry: dict[str, object]) -> None:
     path = dir_path / "transcript.jsonl"
     with path.open("a") as f:
         f.write(json.dumps(entry) + "\n")
+
+
+def load_transcript(workspace_dir: str) -> list[dict[str, object]]:
+    path = Path(workspace_dir) / DIR_NAME / "transcript.jsonl"
+    if not path.exists():
+        return []
+    entries: list[dict[str, object]] = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        with contextlib.suppress(json.JSONDecodeError):
+            entries.append(json.loads(line))
+    return entries
 
 
 def _write_atomic(path: Path, data: str) -> None:

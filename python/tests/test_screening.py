@@ -6,6 +6,43 @@ from nina.engine import screening
 from nina.engine.events import STATE_DRIVE, STATE_SCAFFOLD
 
 
+async def test_leaks_routes_to_ollama_for_ollama_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    async def fake_classify(
+        system_prompt: str, prompt: str, model: str, host: str | None = None
+    ) -> str:
+        calls.append((system_prompt, prompt, model))
+        return "LEAK"
+
+    async def fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("query() should not be called for an ollama model")
+
+    monkeypatch.setattr(screening.ollama, "classify", fake_classify)
+    monkeypatch.setattr(screening, "query", fail_if_called)
+
+    result = await screening.leaks("goal", "```py\nx = 1\ny = 2\n```", model="ollama:gemma4")
+    assert result is True
+    assert calls == [(screening.SCREEN_SYSTEM_PROMPT, calls[0][1], "gemma4")]
+
+
+async def test_leaks_uses_claude_haiku_for_non_ollama_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from claude_agent_sdk import AssistantMessage, TextBlock
+
+    seen_models = []
+
+    async def fake_query(*, prompt: str, options: object) -> object:
+        seen_models.append(options.model)
+        yield AssistantMessage(content=[TextBlock(text="OK")], model="test")
+
+    monkeypatch.setattr(screening, "query", fake_query)
+    result = await screening.leaks("goal", "```py\nx = 1\ny = 2\n```", model="opus")
+    assert result is False
+    assert seen_models == [screening.SCREEN_MODEL]
+
+
 def test_is_active_only_at_low_dial_in_drive() -> None:
     assert screening.is_active(0, STATE_DRIVE)
     assert screening.is_active(1, STATE_DRIVE)
@@ -61,7 +98,7 @@ async def test_leaks_classifies_multi_line_fragment(monkeypatch: pytest.MonkeyPa
 async def test_screen_text_returns_original_when_not_leaking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def not_leaking(step_goal: str, text: str) -> bool:
+    async def not_leaking(step_goal: str, text: str, model: str | None = None) -> bool:
         return False
 
     monkeypatch.setattr(screening, "leaks", not_leaking)
@@ -76,7 +113,7 @@ async def test_screen_text_returns_original_when_not_leaking(
 async def test_screen_text_rewrites_when_leaking(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = iter([True, False])
 
-    async def fake_leaks(step_goal: str, text: str) -> bool:
+    async def fake_leaks(step_goal: str, text: str, model: str | None = None) -> bool:
         return next(calls)
 
     monkeypatch.setattr(screening, "leaks", fake_leaks)
@@ -92,7 +129,7 @@ async def test_screen_text_rewrites_when_leaking(monkeypatch: pytest.MonkeyPatch
 async def test_screen_text_warns_when_rewrite_still_leaks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def always_leaks(step_goal: str, text: str) -> bool:
+    async def always_leaks(step_goal: str, text: str, model: str | None = None) -> bool:
         return True
 
     monkeypatch.setattr(screening, "leaks", always_leaks)
@@ -108,7 +145,7 @@ async def test_screen_text_warns_when_rewrite_still_leaks(
 async def test_screen_text_falls_back_to_original_on_empty_rewrite(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def always_leaks(step_goal: str, text: str) -> bool:
+    async def always_leaks(step_goal: str, text: str, model: str | None = None) -> bool:
         return True
 
     monkeypatch.setattr(screening, "leaks", always_leaks)
