@@ -14,7 +14,13 @@ cd nina
 uv sync
 ```
 
-Run it with `uv run nina` (the console script is named `nina`).
+Run it with `uv run nina` (the console script is named `nina`), or install it as a standalone command on your `PATH`:
+
+```sh
+uv tool install --editable .
+```
+
+`--editable` keeps `nina` pointed at this checkout, so `git pull` or local edits take effect immediately with no reinstall — only add/remove/version changes to dependencies need `uv tool upgrade nina`. Make sure uv's tool bin directory is on your `PATH` (`uv tool update-shell` sets this up if it isn't).
 
 ## Use
 
@@ -22,14 +28,16 @@ Start in an **empty directory**: Nina scaffolds the project there:
 
 ```sh
 mkdir learn-python && cd learn-python
-uv run --project /path/to/nina nina start
+nina start
 ```
 
 If you don't pass a goal, Nina asks for one first thing. You can still give it up front the old way:
 
 ```sh
-uv run --project /path/to/nina nina start "learn Python basics"
+nina start "learn Python basics"
 ```
+
+(If you skipped `uv tool install` and only ran `uv sync`, use `uv run --project /path/to/nina nina start` instead, from any directory.)
 
 On first run Nina then asks a few quick profile questions (experience, how much she may type, how fast hints escalate). She then proposes 2–3 project ideas; pick one and she checks your environment, scaffolds the project, and gives you the first step. Then loop:
 
