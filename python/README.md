@@ -1,8 +1,8 @@
-# Nina (Python)
+# Nina
 
 Nina is an AI pair-programming companion for people who want to *learn* to code, not just have code written for them. Nina is the navigator: she plans a small learning project, explains what to do and why, and reviews what you wrote. You are the driver: you type the code in your own editor. A "typing dial" enforced by the engine (not by asking the model nicely) guarantees Nina can't just do it for you.
 
-This is the Python port, built on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview). It runs on top of your local `claude` CLI install and uses whatever credential that CLI already has — including a Claude subscription login, not just an API key. If you're logged into Claude Code with `claude login`, Nina just works; API key, Amazon Bedrock, and Google Vertex auth are equally supported, since Nina is simply the credential the CLI resolves.
+Nina is built on the [Claude Agent SDK](https://docs.claude.com/en/api/agent-sdk/overview). It runs on top of your local `claude` CLI install and uses whatever credential that CLI already has — including a Claude subscription login, not just an API key. If you're logged into Claude Code with `claude login`, Nina just works; API key, Amazon Bedrock, and Google Vertex auth are equally supported, since Nina is simply the credential the CLI resolves. A local-model option via Ollama is also available (see below) for when you don't want to use Claude at all.
 
 ## Install
 
@@ -14,7 +14,7 @@ cd nina/python
 uv sync
 ```
 
-Run it with `uv run nina` (the console script is named `nina`, same as the Go build — if both are on your `PATH`, be explicit about which one you're invoking during development).
+Run it with `uv run nina` (the console script is named `nina`).
 
 ## Use
 

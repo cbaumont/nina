@@ -2,22 +2,9 @@
 
 ### Project
 
-Nina is a CLI AI pair-programming companion for people learning to code: the AI navigates and reviews, the human types. See `nina-design-doc.md` for the full design and `README.md` for usage.
+Nina is a CLI AI pair-programming companion for people learning to code: the AI navigates and reviews, the human types. See `nina-design-doc.md` for the original design rationale (it predates the Python port and still describes the Go stack that was retired) and `README.md` for a project overview.
 
-* Stack: Go (module `github.com/cbaumont/nina`), Bubble Tea + Glamour TUI, git plumbing for workspace snapshots.
-* Layout: `cmd/nina` (entry point), `internal/engine` (step state machine, typing-dial policy, prompts), `internal/llm` (provider-neutral conversation + Anthropic and Ollama backends), `internal/workspace` (git snapshots/diffs under `refs/nina/*`), `internal/tui`.
-* The typing dial is enforced in `internal/engine` (tool-call filter), never in the prompt alone — keep it that way.
-* Build/check: `go build ./...`, `go vet ./...`, `gofmt -l .`, `go test ./...` (all offline; no API key needed). CI (`.github/workflows/ci.yml`) runs the same checks plus `go test -race` on every push/PR to `main`.
-* Live end-to-end test (needs a running model): `NINA_E2E=1 NINA_MODEL=ollama:gemma4:e2b go test ./internal/engine/ -run TestEndToEndAgainstRealModel -v`.
-
-### Working pattern
-
-* Read nearby source and tests first.
-* Make the smallest correct change.
-* Run relevant tests.
-* Before committing, run `gofmt -l .` and fix any files it lists (`gofmt -w`).
-* Ensure to always commit your changes.
-* Keep commit messages short, in imperative mood, and without prefixes (e.g. `Add user profile validation`).
+The implementation lives entirely under [`python/`](python/) — see [`python/AGENTS.md`](python/AGENTS.md) for the stack, layout, build/check commands, and working conventions. There is no other implementation in this repo.
 
 ### Phased Development Workflow
 
@@ -28,10 +15,6 @@ Nina is a CLI AI pair-programming companion for people learning to code: the AI 
 
 * Add or update tests for non-trivial behaviour changes.
 * Use a test-first approach whenever possible.
-
-### Comments
-
-* Real programmers (and agents) don't use comments. The code should be obvious.
 
 ### Naming
 
