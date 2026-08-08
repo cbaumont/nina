@@ -1,8 +1,8 @@
 # Design Document: Nina — an AI Pair Programming Companion
 
-**Status:** Draft v0.4 — stack decided (Go + Bubble Tea); walking skeleton implemented with Claude and Ollama backends
+**Status:** v0.5 — MVP implemented in Python on the Claude Agent SDK (Textual TUI), with a local-model backend via Ollama. An earlier Go/Bubble Tea implementation reached the same MVP scope first and was retired once the Python port reached parity; Python is now the only implementation.
 **Author:** Carlos
-**Date:** July 2026
+**Date:** August 2026
 
 ## 1. Summary
 
@@ -61,7 +61,7 @@ At first run (and adjustable any time with `/profile`), the user sets:
 
 **General programming experience** — none / beginner / intermediate / professional. Controls how much foundational explanation accompanies instructions.
 
-**Stack familiarity** — per language/framework in play, on the same scale. Controls idiom-level vs. syntax-level explanation and analogies to known stacks. Nina also *infers and updates* this over time: a lightweight model pass at step boundaries notes signals and proposes adjustments through `/profile` — no silent drift.
+**Stack familiarity** — per language/framework in play, on the same scale. Controls idiom-level vs. syntax-level explanation and analogies to known stacks. Automatic inference of this over time (a lightweight model pass at step boundaries proposing adjustments through `/profile`) was scoped for the MVP but deferred; today it's set once at first run and changed explicitly with `/profile`.
 
 **The typing dial** — how much the AI is permitted to write, as an explicit, user-controlled setting:
 
@@ -90,7 +90,7 @@ The first ten minutes decide whether a learner returns. First run includes an en
 
 ```
 ┌─────────────────────────────┐
-│  CLI (TUI)                  │  Go + Bubble Tea/Glamour (decided; single static binary)
+│  CLI (TUI)                  │  Python + Textual
 │  - session loop & commands  │
 │  - rendering, status line   │
 └──────────┬──────────────────┘
@@ -104,11 +104,12 @@ The first ten minutes decide whether a learner returns. First run includes an en
 └───┬──────────┬──────────┬───┘
     │          │          │
 ┌───┴────┐ ┌───┴──────┐ ┌─┴───────────┐
-│ LLM    │ │ Workspace│ │ Runner      │
-│ client │ │ watcher  │ │ - run code  │
+│ Agent  │ │ Workspace│ │ Runner      │
+│ session│ │ watcher  │ │ - run code  │
 │(Claude │ │ - fs     │ │ - tests     │
-│ API or │ │   events │ │ - capture   │
-│ Ollama)│ │ - diffs  │ │   output    │
+│ Agent  │ │   events │ │ - capture   │
+│ SDK or │ │ - diffs  │ │   output    │
+│ Ollama)│ │          │ │             │
 └────────┘ └──────────┘ └─────────────┘
 ```
 
@@ -118,11 +119,11 @@ The first ten minutes decide whether a learner returns. First run includes an en
 
 The chat channel gets a similar guard. A fast-model pass screens outgoing navigator messages at dial levels 0–1 and regenerates messages that contain step-complete code. This is imperfect, but turns over-helping from a prompt-only risk into an engineered control. Prompt assembly injects the profile, dial policy, task plan, recent diffs, and pedagogical instructions into each model call.
 
-**Workspace Watcher.** Uses native file-system events (chokidar / watchdog) plus git. Nina initializes or uses the repo's git to snapshot state at each step boundary, so "what did the user just write" is a clean diff. Snapshots live under hidden `refs/nina/*` refs created with git plumbing; Nina does not switch branches, create visible commits, or touch the user's history. File events feed the trigger policy in 4.1, with `/done` always authoritative.
+**Workspace Watcher.** Uses native file-system events (`watchdog`) plus git. Nina initializes or uses the repo's git to snapshot state at each step boundary, so "what did the user just write" is a clean diff. Snapshots live under hidden `refs/nina/*` refs created with git plumbing; Nina does not switch branches, create visible commits, or touch the user's history. File events feed the trigger policy in 4.1, with `/done` always authoritative.
 
 **Runner.** Executes build/test/run commands with captured stdout/stderr fed back to both the user and the model. Commands are proposed by the model and confirmed by the user, with optional auto-approval for safe classes like the project's own test command. The Runner also owns environment health for learning projects: dependency installs, version checks, and the first-run self-check. MVP has no sandbox beyond confirmation.
 
-**LLM Client.** A provider-neutral conversation and tool-definition layer with pluggable backends, using tool use for structured actions (`write_file`, `read_file`, `run_command`, `update_plan`, `update_profile`). Two backends exist: the Claude API via the official Go SDK (default, `claude-sonnet-5`), and local models via Ollama's native `/api/chat` (selected with `NINA_MODEL=ollama:<model>`; the model must support tool calling, e.g. `gemma4`). Local models make development and testing free of token costs and give privacy-sensitive learners a fully offline option, at reduced review quality. A strong model handles planning, review, and explanation; a fast model handles lightweight classification such as step completion, dial screening, and profile-inference signals. Session context is managed by summarizing older steps. With bring-your-own-key billing, define and track a target cost per typical session during beta.
+**Agent Session.** A small protocol (`session_id`, `send(text) -> events`, `close()`) with pluggable backends, using tool use for structured actions (`write_file`, `read_file`, `run_command`, `set_plan`, `update_plan`, `submit_review`). The default backend is the Claude Agent SDK, which spawns the local `claude` CLI as a subprocess and inherits whatever credential it already resolved — subscription login, `ANTHROPIC_API_KEY`, Amazon Bedrock, or Google Vertex — so Nina never handles a credential directly and the CLI subprocess owns conversation memory across turns. The alternate backend talks to a local model via Ollama's native `/api/chat` (selected with `--model ollama:<model>`; the model must support tool calling, e.g. `qwen3` or `gemma4`), which requires no Claude credential at all. Local models make development and testing free of token costs and give privacy-sensitive learners a fully offline option, at reduced review quality. A strong model handles planning, review, and explanation; a fast model (Claude Haiku, or the same local model when running on Ollama) handles the dial-screening classifier that checks outgoing navigator messages for leaked solutions. With bring-your-own-key billing, define and track a target cost per typical session during beta.
 
 **State & Persistence.** A `.nina/` directory holds the task plan, profile overrides, transcripts, and pointers to git snapshots, making sessions resumable and powering end-of-session summaries.
 
@@ -134,11 +135,11 @@ The chat channel gets a similar guard. A fast-model pass screens outgoing naviga
 
 **Pedagogy as explicit prompt policy.** Teaching behavior — Socratic review, hint escalation, right-sized steps, and "why" alongside "what" — is encoded as versioned prompt files assembled from the profile, so it can be tuned rapidly against real sessions.
 
-**Provider-neutral LLM layer.** The engine speaks one internal conversation format; each backend (Claude API, Ollama) converts to its wire format per request. This keeps the dial filter and pedagogy independent of any vendor SDK, and makes token-free local testing a first-class workflow rather than a fork.
+**Provider-neutral agent session.** The engine only depends on the small `AgentSession` protocol, not on any vendor SDK; the Claude Agent SDK backend and the Ollama HTTP backend implement it independently, each owning its own conversation state and tool-call loop internally. This keeps the dial filter and pedagogy code identical across backends, and makes token-free local testing against Ollama a first-class workflow rather than a fork.
 
 ## 6. MVP Scope
 
-The MVP is a single-user CLI. Runtime and packaging are decided: Go with Bubble Tea/Glamour, distributed as a single static binary. It supports one or two launch stacks well, proposed as Python and JavaScript/TypeScript. It includes learning-project mode, profile and dial, engine-level dial enforcement, low-dial message screening, the core loop, file watching, git snapshots, runner confirmation, environment self-check, session resume, and end-of-session summaries. Bring-your-own API keys keep billing out of scope initially.
+The MVP is a single-user CLI: Python, distributed via `uv`/`pip`, with a Textual TUI. It includes learning-project mode, profile and dial, engine-level dial enforcement, low-dial message screening, the core loop, file watching, git snapshots, runner confirmation, environment self-check, session resume, and end-of-session summaries. Bring-your-own credentials (a Claude subscription login, an API key, or a local Ollama model) keep billing out of scope initially.
 
 Explicitly deferred: own-project mode (4.2), additional stacks, long-term learner progress models across projects, spaced-repetition review of past concepts, voice interaction, and any hosted/account infrastructure.
 
