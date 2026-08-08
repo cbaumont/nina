@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from nina import profile as profile_module
-from nina import prompts, runner, state
+from nina import prompts, runner, screening, state
 from nina.agent.session import AgentSession, RateLimited, TextDelta, ToolHandler, TurnComplete
 from nina.events import (
     EVENT_COMMAND_RUN,
@@ -77,9 +77,10 @@ class Engine:
         self.system_prompt = prompts.system_prompt(prof)
         self.session: AgentSession | None = None
         self._auto_approve: set[str] = set()
+        self.rewriting = False
 
     def tool_handlers(self) -> dict[str, ToolHandler]:
-        return {
+        raw: dict[str, ToolHandler] = {
             TOOL_WRITE_FILE: self._write_file,
             TOOL_SET_PLAN: self._set_plan,
             TOOL_UPDATE_PLAN: self._update_plan,
@@ -87,6 +88,18 @@ class Engine:
             TOOL_RUN_COMMAND: self._run_command,
             TOOL_READ_FILE: self._read_file,
         }
+        return {name: self._guard_rewriting(handler) for name, handler in raw.items()}
+
+    def _guard_rewriting(self, handler: ToolHandler) -> ToolHandler:
+        async def wrapped(args: dict[str, object]) -> ToolResult:
+            if self.rewriting:
+                return ToolResult(
+                    "Not executed: this turn only rewrites your previous message. "
+                    "Call the tool again in your next turn if needed."
+                )
+            return await handler(args)
+
+        return wrapped
 
     def update_profile(self, prof: Profile) -> None:
         self.profile = prof
@@ -239,13 +252,32 @@ class Engine:
         self.emit(Event(kind=EVENT_INFO, text=f"Summary saved to `.nina/{name}`"))
 
     async def _converse(self, text: str) -> str:
-        assert self.session is not None
         self.review = None
+        screen = screening.is_active(self.profile.dial, self.state)
+        full_text = await self._raw_converse(text, emit_deltas=not screen)
+        if not screen or self.review is not None or full_text.strip() == "":
+            return full_text
+        step_goal = ""
+        if self.step_index < len(self.plan.steps):
+            step_goal = self.plan.steps[self.step_index].goal
+        shown = await screening.screen_text(step_goal, full_text, self._rewrite)
+        self.emit(Event(kind=EVENT_TEXT_DELTA, text=shown))
+        return full_text
+
+    async def _rewrite(self, instruction: str) -> str:
+        self.rewriting = True
+        try:
+            return await self._raw_converse(instruction, emit_deltas=False)
+        finally:
+            self.rewriting = False
+
+    async def _raw_converse(self, text: str, emit_deltas: bool) -> str:
+        assert self.session is not None
         parts: list[str] = []
         async for event in self.session.send(text):
             if isinstance(event, TextDelta):
                 parts.append(event.text)
-                if self.review is None:
+                if emit_deltas and self.review is None:
                     self.emit(Event(kind=EVENT_TEXT_DELTA, text=event.text))
             elif isinstance(event, RateLimited):
                 if event.fatal:

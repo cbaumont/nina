@@ -29,6 +29,9 @@ from nina.state import save_history
 from nina.tui.commands import COMMANDS
 from nina.tui.commands import match_commands as match_slash_commands
 from nina.tui.setup import SETUP_QUESTIONS, SetupFlow, apply_setup_answer, setup_question
+from nina.watcher import Watcher
+
+WATCH_IDLE_SECONDS = 25.0
 
 WELCOME_GOAL = (
     "## Welcome to Nina\n\nWhat would you like to learn or build? Tell Nina your goal "
@@ -74,6 +77,7 @@ class NinaApp(App[None]):
         self.step_count = 0
         self.history = ""
         self._streaming = ""
+        self._watcher: Watcher | None = None
 
         if need_goal:
             self.awaiting_goal = True
@@ -123,6 +127,16 @@ class NinaApp(App[None]):
         if self.engine.state == STATE_IDLE and self.setup is None and not self.awaiting_goal:
             self._set_busy(True, "brainstorming project ideas")
             self.run_worker(self._do(self.engine.start(self.goal)))
+        if self.dir:
+            self._watcher = Watcher(self.dir, WATCH_IDLE_SECONDS, self._on_watcher_nudge)
+
+    def on_unmount(self) -> None:
+        if self._watcher is not None:
+            self._watcher.close()
+            self._watcher = None
+
+    def _on_watcher_nudge(self) -> None:
+        self.call_from_thread(self._on_event, Event(kind=EVENT_NUDGE))
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         text = event.value.strip()

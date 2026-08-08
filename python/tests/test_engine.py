@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from nina import screening as screening_module
 from nina import state
 from nina.engine import Engine, RateLimitExceeded, new_engine
 from nina.events import (
@@ -14,6 +15,7 @@ from nina.events import (
     EVENT_REVIEW,
     EVENT_SESSION_DONE,
     EVENT_STEP_STARTED,
+    EVENT_TEXT_DELTA,
     STATE_DONE,
     STATE_DRIVE,
     STATE_PROPOSE,
@@ -426,3 +428,50 @@ async def test_fatal_rate_limit_without_resets_at(tmp_path: Path) -> None:
 
     with pytest.raises(RateLimitExceeded, match="later"):
         await eng.start("learn python")
+
+
+async def test_screening_buffers_deltas_and_blocks_tools_during_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    leak_calls = iter([True, False])
+
+    async def fake_leaks(step_goal: str, text: str) -> bool:
+        return next(leak_calls)
+
+    monkeypatch.setattr(screening_module, "leaks", fake_leaks)
+
+    turns = [
+        ScriptedTurn(text="```py\nanswer = 42\n```"),
+        ScriptedTurn(
+            text="use a variable and print it",
+            tool_calls=[ScriptedToolCall(TOOL_WRITE_FILE, {"path": "leak.py", "content": "x"})],
+        ),
+        ScriptedTurn(),
+    ]
+    eng, dir, events = new_test_engine(tmp_path, turns)
+    eng.profile.dial = 1
+    eng.state = STATE_DRIVE
+
+    await eng.user_message("show me the code")
+
+    deltas = [ev.text for ev in events if ev.kind == EVENT_TEXT_DELTA]
+    assert deltas == ["use a variable and print it"]
+    assert not (Path(dir) / "leak.py").exists()
+
+
+async def test_screening_inactive_streams_deltas_live(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fail_if_called(step_goal: str, text: str) -> bool:
+        raise AssertionError("leaks() should not run when screening is inactive")
+
+    monkeypatch.setattr(screening_module, "leaks", fail_if_called)
+
+    eng, _, events = new_test_engine(tmp_path, [ScriptedTurn(text="```py\nanswer = 42\n```")])
+    eng.profile.dial = 2
+    eng.state = STATE_DRIVE
+
+    await eng.user_message("show me the code")
+
+    deltas = [ev.text for ev in events if ev.kind == EVENT_TEXT_DELTA]
+    assert deltas == ["```py\nanswer = 42\n```"]
