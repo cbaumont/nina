@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable
 
 from claude_agent_sdk import (
@@ -67,7 +66,7 @@ class ClaudeSdkAgentSession:
         self.session_id: str | None = None
 
     async def send(self, text: str) -> AsyncIterator[AgentEvent]:
-        self._append_transcript({"role": "user", "text": text})
+        state.append_transcript_safe(self._cwd, {"role": "user", "text": text})
         if not self._connected:
             await self._client.connect()
             self._connected = True
@@ -84,19 +83,19 @@ class ClaudeSdkAgentSession:
                     block.text for block in message.content if isinstance(block, TextBlock)
                 )
                 if text_out:
-                    self._append_transcript(
+                    state.append_transcript_safe(
+                        self._cwd,
                         {
                             "role": "assistant",
                             "text": text_out,
                             "session_id": message.session_id,
                             "model": message.model,
-                        }
+                        },
                     )
                 if message.error == "rate_limit":
                     yield RateLimited(
                         rate_limit_type="unknown",
                         resets_at=None,
-                        raw={"error": message.error},
                         fatal=True,
                     )
             elif isinstance(message, RateLimitEvent):
@@ -104,12 +103,16 @@ class ClaudeSdkAgentSession:
                 yield RateLimited(
                     rate_limit_type=info.rate_limit_type or "unknown",
                     resets_at=info.resets_at,
-                    raw=info.raw,
                 )
             elif isinstance(message, ResultMessage):
                 self.session_id = message.session_id
-                self._append_transcript(
-                    {"role": "result", "subtype": message.subtype, "session_id": message.session_id}
+                state.append_transcript_safe(
+                    self._cwd,
+                    {
+                        "role": "result",
+                        "subtype": message.subtype,
+                        "session_id": message.session_id,
+                    },
                 )
         yield TurnComplete()
 
@@ -117,7 +120,3 @@ class ClaudeSdkAgentSession:
         if self._connected:
             await self._client.disconnect()
             self._connected = False
-
-    def _append_transcript(self, entry: dict[str, object]) -> None:
-        with contextlib.suppress(OSError):
-            state.append_transcript(self._cwd, entry)

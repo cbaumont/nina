@@ -72,6 +72,11 @@ def append_transcript(workspace_dir: str, entry: dict[str, object]) -> None:
         f.write(json.dumps(entry) + "\n")
 
 
+def append_transcript_safe(workspace_dir: str, entry: dict[str, object]) -> None:
+    with contextlib.suppress(OSError):
+        append_transcript(workspace_dir, entry)
+
+
 def load_transcript(workspace_dir: str) -> list[dict[str, object]]:
     path = Path(workspace_dir) / DIR_NAME / "transcript.jsonl"
     if not path.exists():

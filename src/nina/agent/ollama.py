@@ -117,7 +117,7 @@ class OllamaAgentSession:
         self.session_id: str | None = None
 
     async def send(self, text: str) -> AsyncIterator[AgentEvent]:
-        self._append_transcript({"role": "user", "text": text})
+        state.append_transcript_safe(self._cwd, {"role": "user", "text": text})
         self._messages.append({"role": "user", "content": text})
         async with httpx.AsyncClient(timeout=None, transport=self._transport) as client:
             for _ in range(MAX_TURNS):
@@ -137,8 +137,9 @@ class OllamaAgentSession:
                     }
                 )
                 if assistant_text:
-                    self._append_transcript(
-                        {"role": "assistant", "text": assistant_text, "model": self._model}
+                    state.append_transcript_safe(
+                        self._cwd,
+                        {"role": "assistant", "text": assistant_text, "model": self._model},
                     )
                 if not tool_calls:
                     break
@@ -206,7 +207,3 @@ class OllamaAgentSession:
 
     async def close(self) -> None:
         return None
-
-    def _append_transcript(self, entry: dict[str, object]) -> None:
-        with contextlib.suppress(OSError):
-            state.append_transcript(self._cwd, entry)

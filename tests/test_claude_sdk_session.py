@@ -4,6 +4,7 @@ from pathlib import Path
 
 from nina.agent.claude_sdk import ClaudeSdkAgentSession
 from nina.agent.tools import TOOL_SPECS, ToolResult
+from nina.system import state
 
 
 async def _handler(args: dict[str, object]) -> ToolResult:
@@ -36,7 +37,7 @@ def test_model_passed_through_to_options(tmp_path: Path) -> None:
 
 def test_append_transcript_writes_to_workspace(tmp_path: Path) -> None:
     session = ClaudeSdkAgentSession("system", str(tmp_path), _handlers())
-    session._append_transcript({"role": "user", "text": "hi"})
+    state.append_transcript_safe(session._cwd, {"role": "user", "text": "hi"})
     path = tmp_path / ".nina" / "transcript.jsonl"
     assert path.exists()
     assert "hi" in path.read_text()

@@ -10,6 +10,7 @@ from nina.agent.model import is_ollama, ollama_model_name
 from nina.agent.ollama import OllamaAgentSession, classify
 from nina.agent.session import TextDelta, TurnComplete
 from nina.agent.tools import ToolResult
+from nina.system import state
 
 
 def _ndjson(*chunks: dict[str, object]) -> bytes:
@@ -173,7 +174,7 @@ def test_history_seeds_prior_messages(tmp_path: Path) -> None:
 
 def test_append_transcript_writes_to_workspace(tmp_path: Path) -> None:
     session = OllamaAgentSession("sys", str(tmp_path), {}, model="gemma4")
-    session._append_transcript({"role": "user", "text": "hi"})
+    state.append_transcript_safe(session._cwd, {"role": "user", "text": "hi"})
     path = tmp_path / ".nina" / "transcript.jsonl"
     assert json.loads(path.read_text().strip()) == {"role": "user", "text": "hi"}
 
