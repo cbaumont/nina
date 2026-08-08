@@ -23,6 +23,41 @@ async def test_leaks_skips_classification_without_fenced_code(
     assert await screening.leaks("goal", "just guidance, no code") is False
 
 
+async def test_leaks_skips_classification_for_single_line_fragment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("query() should not be called for a single-line fragment")
+
+    monkeypatch.setattr(screening, "query", fail_if_called)
+    assert await screening.leaks("goal", "```py\nimport os\n```") is False
+
+
+async def test_leaks_skips_classification_for_blank_fenced_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fail_if_called(*args: object, **kwargs: object) -> None:
+        raise AssertionError("query() should not be called for a blank fenced block")
+
+    monkeypatch.setattr(screening, "query", fail_if_called)
+    assert await screening.leaks("goal", "```py\n\n   \n```") is False
+
+
+async def test_leaks_classifies_multi_line_fragment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from claude_agent_sdk import AssistantMessage, TextBlock
+
+    calls = []
+
+    async def fake_query(*, prompt: str, options: object) -> object:
+        calls.append(prompt)
+        yield AssistantMessage(content=[TextBlock(text="OK")], model="test")
+
+    monkeypatch.setattr(screening, "query", fake_query)
+    result = await screening.leaks("goal", "```py\nx = 1\ny = 2\n```")
+    assert result is False
+    assert len(calls) == 1
+
+
 async def test_screen_text_returns_original_when_not_leaking(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

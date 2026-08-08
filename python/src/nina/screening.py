@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, TextBlock, query
 
 from nina.events import STATE_DRIVE
+
+_FENCED_BLOCK_RE = re.compile(r"```[^\n]*\n(.*?)```", re.S)
 
 SCREEN_MODEL = "claude-haiku-4-5-20251001"
 
@@ -38,6 +41,14 @@ def is_active(dial: int, state: str) -> bool:
 
 async def leaks(step_goal: str, text: str) -> bool:
     if "```" not in text:
+        return False
+    code_lines = sum(
+        1
+        for block in _FENCED_BLOCK_RE.findall(text)
+        for line in block.splitlines()
+        if line.strip()
+    )
+    if code_lines <= 1:
         return False
     prompt = f"Current step goal:\n{step_goal}\n\nNavigator message:\n{text}"
     options = ClaudeAgentOptions(
