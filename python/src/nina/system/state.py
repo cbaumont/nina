@@ -20,6 +20,7 @@ class Session:
     snapshots: int = 0
     last_ref: str = ""
     sdk_session_id: str | None = None
+    model: str | None = None
 
 
 def save(workspace_dir: str, sess: Session) -> None:
@@ -45,6 +46,7 @@ def load(workspace_dir: str) -> Session | None:
         snapshots=data.get("snapshots", 0),
         last_ref=data.get("last_ref", ""),
         sdk_session_id=data.get("sdk_session_id"),
+        model=data.get("model"),
     )
 
 

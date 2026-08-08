@@ -11,7 +11,7 @@ from nina.system.workspace import open_workspace
 from nina.tui.app import NinaApp
 
 
-def run(goal: str, dir: str, is_start: bool) -> None:
+def run(goal: str, dir: str, is_start: bool, model: str | None = None) -> None:
     sess = load_session(dir)
     if not is_start:
         if sess is None:
@@ -28,13 +28,16 @@ def run(goal: str, dir: str, is_start: bool) -> None:
     prof, profile_found = load_profile(dir)
     prior_history = "" if is_start else load_history(dir)
     resume_id = sess.sdk_session_id if (not is_start and sess is not None) else None
+    if not is_start and sess is not None:
+        model = sess.model
 
     engine = new_engine(
         ws,
         dir,
         prof,
         lambda ev: None,
-        lambda sp, h: ClaudeSdkAgentSession(sp, dir, h, resume=resume_id),
+        lambda sp, h: ClaudeSdkAgentSession(sp, dir, h, resume=resume_id, model=model),
+        model=model,
     )
     if not is_start:
         assert sess is not None

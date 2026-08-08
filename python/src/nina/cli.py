@@ -20,8 +20,9 @@ def run_args(args: list[str]) -> None:
         print(f"nina {VERSION}")
         return
     if command == "start":
-        goal = " ".join(args[1:])
-        tui_run(goal, ".", True)
+        rest, model = _extract_model_flag(args[1:])
+        goal = " ".join(rest)
+        tui_run(goal, ".", True, model)
         return
     if command == "resume":
         tui_run("", ".", False)
@@ -31,12 +32,36 @@ def run_args(args: list[str]) -> None:
     sys.exit(1)
 
 
+def _extract_model_flag(args: list[str]) -> tuple[list[str], str | None]:
+    rest: list[str] = []
+    model: str | None = None
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--model":
+            if i + 1 >= len(args):
+                print("nina: --model requires a value", file=sys.stderr)
+                sys.exit(1)
+            model = args[i + 1]
+            i += 2
+            continue
+        if arg.startswith("--model="):
+            model = arg.split("=", 1)[1]
+            i += 1
+            continue
+        rest.append(arg)
+        i += 1
+    return rest, model
+
+
 def _print_usage() -> None:
     print(
         "nina — AI pair programming companion\n\n"
         "Usage:\n"
         "  nina start                     begin a guided session; Nina asks for your goal first\n"
         '  nina start "<learning goal>"   begin a guided session with a goal already in hand\n'
+        "  nina start --model opus ...    use a specific model (sonnet, opus, haiku, or a full\n"
+        "                                  model ID); remembered for nina resume\n"
         "  nina resume                    continue the session saved in .nina/\n"
         "  nina version                   print version\n\n"
         "Nina runs on top of your local Claude Code install and uses whatever\n"

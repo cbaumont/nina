@@ -40,6 +40,7 @@ class ClaudeSdkAgentSession:
         cwd: str,
         handlers: dict[str, ToolHandler],
         resume: str | None = None,
+        model: str | None = None,
     ) -> None:
         sdk_tools = [
             tool(spec.name, spec.description, spec.schema)(_wrap_tool(handlers[spec.name]))
@@ -58,6 +59,7 @@ class ClaudeSdkAgentSession:
             max_turns=MAX_TURNS,
             cwd=cwd,
             resume=resume,
+            model=model,
         )
         self._client = ClaudeSDKClient(options=options)
         self._connected = False

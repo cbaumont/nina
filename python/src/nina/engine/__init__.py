@@ -61,12 +61,18 @@ class RateLimitExceeded(RuntimeError):
 
 class Engine:
     def __init__(
-        self, ws: Workspace, dir: str, prof: Profile, emit: Callable[[Event], None]
+        self,
+        ws: Workspace,
+        dir: str,
+        prof: Profile,
+        emit: Callable[[Event], None],
+        model: str | None = None,
     ) -> None:
         self.ws = ws
         self.dir = dir
         self.emit = emit
         self.session_id = time.strftime("%Y%m%d-%H%M%S")
+        self.model = model
         self.goal = ""
         self.state = STATE_IDLE
         self.plan = Plan()
@@ -130,6 +136,7 @@ class Engine:
             snapshots=self.snapshots,
             last_ref=self.last_ref,
             sdk_session_id=sdk_session_id,
+            model=self.model,
         )
         try:
             state.save(self.dir, sess)
@@ -447,7 +454,8 @@ def new_engine(
     prof: Profile,
     emit: Callable[[Event], None],
     session_factory: Callable[[str, dict[str, ToolHandler]], AgentSession],
+    model: str | None = None,
 ) -> Engine:
-    engine = Engine(ws, dir, prof, emit)
+    engine = Engine(ws, dir, prof, emit, model=model)
     engine.session = session_factory(engine.system_prompt, engine.tool_handlers())
     return engine

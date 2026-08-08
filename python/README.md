@@ -39,6 +39,8 @@ On first run Nina then asks a few quick profile questions (experience, how much 
 
 Type anything else to ask Nina a question mid-step. Sessions save to `.nina/`; `nina resume` continues an interrupted session, including its actual conversation memory — not just Nina's plan/step bookkeeping — by resuming the underlying Claude Agent SDK session. Finishing (or `/summary`) writes a learning recap to `.nina/` too.
 
+Pass `--model` to pick which model Nina runs on, e.g. `nina start --model opus "learn Python basics"` (accepts `sonnet`, `opus`, `haiku`, `inherit`, or a full model ID; defaults to the Claude CLI's default). The choice is remembered in `.nina/session.json`, so `nina resume` continues on the same model.
+
 **Commands:** `/done` · `/why` · `/stuck` · `/skip` · `/recap` · `/run [cmd]` · `/summary` · `/dial <0-3>` · `/profile` · `/help` · `/quit`
 
 **The typing dial** is a ceiling on what Nina may write, enforced by the engine: `0` nothing, `1` project scaffold only (default), `2` + boilerplate, `3` collaborative. At levels 0–1 a fast model additionally screens Nina's messages so she doesn't paste the solution into chat.

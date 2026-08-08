@@ -24,6 +24,16 @@ def test_resume_passed_through_to_options(tmp_path: Path) -> None:
     assert session._client.options.resume == "sdk-session-123"
 
 
+def test_model_none_by_default(tmp_path: Path) -> None:
+    session = ClaudeSdkAgentSession("system", str(tmp_path), _handlers())
+    assert session._client.options.model is None
+
+
+def test_model_passed_through_to_options(tmp_path: Path) -> None:
+    session = ClaudeSdkAgentSession("system", str(tmp_path), _handlers(), model="opus")
+    assert session._client.options.model == "opus"
+
+
 def test_append_transcript_writes_to_workspace(tmp_path: Path) -> None:
     session = ClaudeSdkAgentSession("system", str(tmp_path), _handlers())
     session._append_transcript({"role": "user", "text": "hi"})
