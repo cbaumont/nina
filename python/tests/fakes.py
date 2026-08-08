@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
-from nina.agent.session import AgentEvent, TextDelta, ToolHandler, TurnComplete
+from nina.agent.session import AgentEvent, RateLimited, TextDelta, ToolHandler, TurnComplete
 from nina.tools import TOOL_SUBMIT_REVIEW
 
 
@@ -17,6 +17,7 @@ class ScriptedToolCall:
 class ScriptedTurn:
     text: str = ""
     tool_calls: list[ScriptedToolCall] = field(default_factory=list)
+    rate_limited: float | None | bool = False
 
 
 class FakeAgentSession:
@@ -39,6 +40,10 @@ class FakeAgentSession:
             self._cursor += 1
             if turn.text:
                 yield TextDelta(turn.text)
+            if turn.rate_limited is not False:
+                resets_at = turn.rate_limited if isinstance(turn.rate_limited, float) else None
+                yield RateLimited(rate_limit_type="unknown", resets_at=resets_at, fatal=True)
+                return
             if not turn.tool_calls:
                 break
             reviewed = False

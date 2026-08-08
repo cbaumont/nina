@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from nina import state
@@ -50,3 +51,21 @@ def test_save_overwrites(tmp_path: Path) -> None:
     assert got is not None
     assert got.step_index == 1
     assert not (tmp_path / ".nina" / "session.json.tmp").exists()
+
+
+def test_save_load_round_trip_with_sdk_session_id(tmp_path: Path) -> None:
+    sess = state.Session(session_id="20260719-120000", sdk_session_id="abc-123")
+    state.save(str(tmp_path), sess)
+    got = state.load(str(tmp_path))
+    assert got is not None
+    assert got.sdk_session_id == "abc-123"
+
+
+def test_append_transcript(tmp_path: Path) -> None:
+    state.append_transcript(str(tmp_path), {"role": "user", "text": "hi"})
+    state.append_transcript(str(tmp_path), {"role": "assistant", "text": "hello"})
+    lines = (tmp_path / ".nina" / "transcript.jsonl").read_text().splitlines()
+    assert [json.loads(line) for line in lines] == [
+        {"role": "user", "text": "hi"},
+        {"role": "assistant", "text": "hello"},
+    ]

@@ -7,7 +7,7 @@ from rich.markdown import Markdown
 from textual.app import App, ComposeResult
 from textual.widgets import Input, RichLog, Static
 
-from nina.engine import Engine
+from nina.engine import Engine, RateLimitExceeded
 from nina.events import (
     EVENT_COMMAND_RUN,
     EVENT_CONFIRM,
@@ -56,6 +56,7 @@ class NinaApp(App[None]):
         need_setup: bool,
         need_goal: bool,
         prior_history: str,
+        cred_note: str | None = None,
     ) -> None:
         super().__init__()
         self.engine = engine
@@ -101,6 +102,9 @@ class NinaApp(App[None]):
                 )
             self.history = (prior_history + "\n---\n" + resumed) if prior_history else resumed
 
+        if cred_note:
+            self.history = f"> {cred_note}\n\n{self.history}" if self.history else f"> {cred_note}"
+
     def compose(self) -> ComposeResult:
         yield Static(id="status")
         yield RichLog(id="transcript", wrap=True, markup=False)
@@ -143,13 +147,24 @@ class NinaApp(App[None]):
 
     async def _do(self, coro: Coroutine[None, None, None]) -> None:
         error: Exception | None = None
+        rate_limited: RateLimitExceeded | None = None
         try:
             await coro
+        except RateLimitExceeded as err:
+            rate_limited = err
         except Exception as err:
             error = err
         self.busy = False
         self.busy_label = ""
         self._flush_streaming()
+        if rate_limited is not None:
+            self._write_markdown(
+                f"> ⏳ {rate_limited}\n>\n"
+                "> Your progress is saved — run `nina resume` after the window resets."
+            )
+            self._persist_history()
+            self.exit()
+            return
         if error is not None:
             self._write_markdown(f"**Error:** {error}")
         self._persist_history()

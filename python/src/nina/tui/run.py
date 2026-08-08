@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from nina import credentials
 from nina.agent.claude_sdk import ClaudeSdkAgentSession
 from nina.engine import new_engine
 from nina.events import STATE_DONE
@@ -26,9 +27,14 @@ def run(goal: str, dir: str, is_start: bool) -> None:
     ws = open_workspace(dir)
     prof, profile_found = load_profile(dir)
     prior_history = "" if is_start else load_history(dir)
+    resume_id = sess.sdk_session_id if (not is_start and sess is not None) else None
 
     engine = new_engine(
-        ws, dir, prof, lambda ev: None, lambda sp, h: ClaudeSdkAgentSession(sp, dir, h)
+        ws,
+        dir,
+        prof,
+        lambda ev: None,
+        lambda sp, h: ClaudeSdkAgentSession(sp, dir, h, resume=resume_id),
     )
     if not is_start:
         assert sess is not None
@@ -38,5 +44,5 @@ def run(goal: str, dir: str, is_start: bool) -> None:
     need_setup = not profile_found and sess is None
     need_goal = is_start and goal == ""
 
-    app = NinaApp(engine, goal, dir, need_setup, need_goal, prior_history)
+    app = NinaApp(engine, goal, dir, need_setup, need_goal, prior_history, credentials.check())
     app.run()

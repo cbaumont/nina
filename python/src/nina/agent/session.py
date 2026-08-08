@@ -29,6 +29,7 @@ class RateLimited:
     rate_limit_type: str
     resets_at: float | None
     raw: dict[str, object] = field(default_factory=dict)
+    fatal: bool = False
 
 
 AgentEvent = TextDelta | MessageComplete | TurnComplete | RateLimited

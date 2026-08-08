@@ -61,6 +61,14 @@ def load_history(workspace_dir: str) -> str:
     return path.read_text()
 
 
+def append_transcript(workspace_dir: str, entry: dict[str, object]) -> None:
+    dir_path = Path(workspace_dir) / DIR_NAME
+    dir_path.mkdir(parents=True, exist_ok=True)
+    path = dir_path / "transcript.jsonl"
+    with path.open("a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
 def _write_atomic(path: Path, data: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(data)

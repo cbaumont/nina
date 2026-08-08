@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from nina import profile as profile_module
@@ -44,6 +45,17 @@ from nina.workspace import Workspace, snapshot_ref
 
 COMMAND_TIMEOUT = 120.0
 MAX_READ_FILE_BYTES = 32 * 1024
+
+
+class RateLimitExceeded(RuntimeError):
+    def __init__(self, resets_at: float | None) -> None:
+        self.resets_at = resets_at
+        if resets_at is not None:
+            when = datetime.fromtimestamp(resets_at).strftime("%Y-%m-%d %H:%M")
+            message = f"Rate limit reached. Try again after {when}."
+        else:
+            message = "Rate limit reached. Try again later."
+        super().__init__(message)
 
 
 class Engine:
@@ -117,6 +129,8 @@ class Engine:
         self.goal = goal
         try:
             await self._converse(prompts.propose_prompt(goal))
+        except RateLimitExceeded:
+            raise
         except Exception:
             self.state = STATE_IDLE
             raise
@@ -234,6 +248,11 @@ class Engine:
                 if self.review is None:
                     self.emit(Event(kind=EVENT_TEXT_DELTA, text=event.text))
             elif isinstance(event, RateLimited):
+                if event.fatal:
+                    exc = RateLimitExceeded(event.resets_at)
+                    self.emit(Event(kind=EVENT_INFO, text=str(exc)))
+                    self.persist()
+                    raise exc
                 self.emit(Event(kind=EVENT_INFO, text=f"Rate limited ({event.rate_limit_type})."))
             elif isinstance(event, TurnComplete):
                 break

@@ -4,7 +4,7 @@ import asyncio
 import sys
 
 from nina.agent.claude_sdk import ClaudeSdkAgentSession
-from nina.engine import Engine, new_engine
+from nina.engine import Engine, RateLimitExceeded, new_engine
 from nina.events import (
     EVENT_COMMAND_RUN,
     EVENT_CONFIRM,
@@ -59,7 +59,11 @@ async def run(goal: str, dir: str) -> Engine:
 def main() -> None:
     goal = " ".join(sys.argv[1:]) or "learn Python basics"
     dir = "."
-    asyncio.run(run(goal, dir))
+    try:
+        asyncio.run(run(goal, dir))
+    except RateLimitExceeded as err:
+        print(f"\n[rate limited] {err}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

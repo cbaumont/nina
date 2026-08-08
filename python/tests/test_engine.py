@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from nina import state
-from nina.engine import Engine, new_engine
+from nina.engine import Engine, RateLimitExceeded, new_engine
 from nina.events import (
     EVENT_COMMAND_RUN,
     EVENT_CONFIRM,
@@ -406,3 +406,23 @@ async def test_read_file(tmp_path: Path) -> None:
 
     result = await eng._read_file({"path": "../secret"})
     assert result.is_error
+
+
+async def test_start_raises_and_persists_on_fatal_rate_limit(tmp_path: Path) -> None:
+    eng, dir, events = new_test_engine(tmp_path, [ScriptedTurn(rate_limited=1_800_000_000.0)])
+
+    with pytest.raises(RateLimitExceeded):
+        await eng.start("learn python")
+
+    assert eng.state == STATE_PROPOSE
+    sess = state.load(dir)
+    assert sess is not None
+    assert sess.state == STATE_PROPOSE
+    assert any(ev.kind == EVENT_INFO and "Rate limit reached" in (ev.text or "") for ev in events)
+
+
+async def test_fatal_rate_limit_without_resets_at(tmp_path: Path) -> None:
+    eng, _, _ = new_test_engine(tmp_path, [ScriptedTurn(rate_limited=True)])
+
+    with pytest.raises(RateLimitExceeded, match="later"):
+        await eng.start("learn python")
