@@ -85,7 +85,12 @@ class ClaudeSdkAgentSession:
                 )
                 if text_out:
                     self._append_transcript(
-                        {"role": "assistant", "text": text_out, "session_id": message.session_id}
+                        {
+                            "role": "assistant",
+                            "text": text_out,
+                            "session_id": message.session_id,
+                            "model": message.model,
+                        }
                     )
                 if message.error == "rate_limit":
                     yield RateLimited(
