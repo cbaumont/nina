@@ -119,6 +119,22 @@ async def test_dial_command_updates_profile(tmp_path: Path) -> None:
         assert app.engine.profile.dial == 0
 
 
+async def test_auto_command_toggles_engine_and_status(tmp_path: Path) -> None:
+    turns = [ScriptedTurn(text="Idea 1 or idea 2?")]
+    app = build_app(tmp_path, turns)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press(*"/auto on", "enter")
+        await pilot.pause()
+        assert app.engine.auto is True
+        status = str(app.query_one("#status", Static).render())
+        assert "auto" in status
+
+        await pilot.press(*"/auto off", "enter")
+        await pilot.pause()
+        assert app.engine.auto is False
+
+
 async def test_slash_suggestions_appear(tmp_path: Path) -> None:
     turns = [ScriptedTurn(text="Idea 1 or idea 2?")]
     app = build_app(tmp_path, turns)

@@ -53,6 +53,14 @@ def test_save_overwrites(tmp_path: Path) -> None:
     assert not (tmp_path / ".nina" / "session.json.tmp").exists()
 
 
+def test_save_load_round_trip_with_auto(tmp_path: Path) -> None:
+    sess = state.Session(session_id="20260719-120000", auto=True)
+    state.save(str(tmp_path), sess)
+    got = state.load(str(tmp_path))
+    assert got is not None
+    assert got.auto is True
+
+
 def test_save_load_round_trip_with_sdk_session_id(tmp_path: Path) -> None:
     sess = state.Session(session_id="20260719-120000", sdk_session_id="abc-123")
     state.save(str(tmp_path), sess)

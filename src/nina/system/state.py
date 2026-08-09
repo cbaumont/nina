@@ -22,6 +22,7 @@ class Session:
     last_ref: str = ""
     sdk_session_id: str | None = None
     model: str | None = None
+    auto: bool = False
 
 
 def save(workspace_dir: str, sess: Session) -> None:
@@ -48,6 +49,7 @@ def load(workspace_dir: str) -> Session | None:
         last_ref=data.get("last_ref", ""),
         sdk_session_id=data.get("sdk_session_id"),
         model=data.get("model"),
+        auto=data.get("auto", False),
     )
 
 

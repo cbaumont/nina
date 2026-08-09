@@ -398,6 +398,50 @@ async def test_run_command_always_skips_second_confirm(tmp_path: Path) -> None:
     assert confirms == 1
 
 
+async def test_run_command_auto_mode_skips_confirm(tmp_path: Path) -> None:
+    dir = str(tmp_path)
+    ws = open_workspace(dir)
+    events: list[Event] = []
+    engine = new_engine(
+        ws,
+        dir,
+        default_profile(),
+        events.append,
+        lambda sp, h: FakeAgentSession(h),
+        auto=True,
+    )
+    engine.state = STATE_DRIVE
+
+    result = await engine._run_command({"command": "echo hello", "reason": "verify"})
+    assert not result.is_error
+    assert "hello" in result.content
+    kinds = [ev.kind for ev in events]
+    assert EVENT_CONFIRM not in kinds
+    assert kinds.count(EVENT_COMMAND_RUN) == 1
+
+
+def test_set_auto_persists_when_session_active(tmp_path: Path) -> None:
+    eng, dir, _ = confirming_engine(tmp_path, ConfirmAnswer(approve=True))
+    assert eng.auto is False
+
+    eng.set_auto(True)
+    assert eng.auto is True
+    got = state.load(dir)
+    assert got is not None
+    assert got.auto is True
+
+
+def test_restore_reads_auto_flag(tmp_path: Path) -> None:
+    dir = str(tmp_path)
+    ws = open_workspace(dir)
+    engine = new_engine(
+        ws, dir, default_profile(), lambda ev: None, lambda sp, h: FakeAgentSession(h)
+    )
+    assert engine.auto is False
+    engine.restore(state.Session(auto=True))
+    assert engine.auto is True
+
+
 async def test_read_file(tmp_path: Path) -> None:
     eng, dir, _ = confirming_engine(tmp_path, ConfirmAnswer(approve=True))
     (Path(dir) / "main.py").write_text("print('hi')\n")

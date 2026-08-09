@@ -21,8 +21,9 @@ def run_args(args: list[str]) -> None:
         return
     if command == "start":
         rest, model = _extract_model_flag(args[1:])
+        rest, auto = _extract_auto_flag(rest)
         goal = " ".join(rest)
-        tui_run(goal, ".", True, model)
+        tui_run(goal, ".", True, model, auto)
         return
     if command == "resume":
         tui_run("", ".", False)
@@ -54,6 +55,17 @@ def _extract_model_flag(args: list[str]) -> tuple[list[str], str | None]:
     return rest, model
 
 
+def _extract_auto_flag(args: list[str]) -> tuple[list[str], bool]:
+    rest: list[str] = []
+    auto = False
+    for arg in args:
+        if arg == "--auto":
+            auto = True
+            continue
+        rest.append(arg)
+    return rest, auto
+
+
 def _print_usage() -> None:
     print(
         "nina — AI pair programming companion\n\n"
@@ -64,6 +76,8 @@ def _print_usage() -> None:
         "                                  model ID); remembered for nina resume\n"
         "  nina start --model ollama:<m>  run entirely on a local model via `ollama serve`\n"
         "                                  (set NINA_OLLAMA_HOST to override localhost:11434)\n"
+        "  nina start --auto ...          skip approval prompts before Nina runs commands;\n"
+        "                                  remembered for nina resume, toggle anytime with /auto\n"
         "  nina resume                    continue the session saved in .nina/\n"
         "  nina version                   print version\n\n"
         "Nina runs on top of your local Claude Code install and uses whatever\n"

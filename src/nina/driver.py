@@ -53,6 +53,7 @@ async def run(goal: str, dir: str, model: str | None = None) -> Engine:
         _print_event,
         session_factory(dir, model),
         model=model,
+        auto=True,
     )
     await engine.start(goal)
     return engine

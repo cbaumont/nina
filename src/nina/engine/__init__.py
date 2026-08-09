@@ -67,12 +67,14 @@ class Engine:
         prof: Profile,
         emit: Callable[[Event], None],
         model: str | None = None,
+        auto: bool = False,
     ) -> None:
         self.ws = ws
         self.dir = dir
         self.emit = emit
         self.session_id = time.strftime("%Y%m%d-%H%M%S")
         self.model = model
+        self.auto = auto
         self.goal = ""
         self.state = STATE_IDLE
         self.plan = Plan()
@@ -115,6 +117,11 @@ class Engine:
         if self.state != STATE_IDLE:
             self.persist()
 
+    def set_auto(self, value: bool) -> None:
+        self.auto = value
+        if self.state != STATE_IDLE:
+            self.persist()
+
     def restore(self, sess: state.Session) -> None:
         self.session_id = sess.session_id
         self.goal = sess.goal
@@ -123,6 +130,7 @@ class Engine:
         self.step_index = sess.step_index
         self.snapshots = sess.snapshots
         self.last_ref = sess.last_ref
+        self.auto = sess.auto
 
     def persist(self) -> None:
         sdk_session_id = self.session.session_id if self.session is not None else None
@@ -137,6 +145,7 @@ class Engine:
             last_ref=self.last_ref,
             sdk_session_id=sdk_session_id,
             model=self.model,
+            auto=self.auto,
         )
         try:
             state.save(self.dir, sess)
@@ -373,7 +382,7 @@ class Engine:
         reason = str(args.get("reason", ""))
         if not command:
             return ToolResult("run_command needs a non-empty command", is_error=True)
-        if command not in self._auto_approve:
+        if not self.auto and command not in self._auto_approve:
             future: asyncio.Future[ConfirmAnswer] = asyncio.get_running_loop().create_future()
             self.emit(
                 Event(
@@ -455,7 +464,8 @@ def new_engine(
     emit: Callable[[Event], None],
     session_factory: Callable[[str, dict[str, ToolHandler]], AgentSession],
     model: str | None = None,
+    auto: bool = False,
 ) -> Engine:
-    engine = Engine(ws, dir, prof, emit, model=model)
+    engine = Engine(ws, dir, prof, emit, model=model, auto=auto)
     engine.session = session_factory(engine.system_prompt, engine.tool_handlers())
     return engine

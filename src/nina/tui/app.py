@@ -211,6 +211,9 @@ class NinaApp(App[None]):
         if text.startswith("/dial "):
             self._handle_dial_set(text[len("/dial ") :].strip())
             return
+        if text.startswith("/auto"):
+            self._handle_auto_set(text[len("/auto") :].strip())
+            return
         if text == "/done":
             self._set_busy(True, "reviewing your changes")
             self._write_markdown("---\n\n`/done`")
@@ -285,6 +288,18 @@ class NinaApp(App[None]):
         prof.dial = dial
         self.engine.update_profile(prof)
         self._write_markdown(f"> 🎚️ Typing dial set to {dial}.")
+        self._refresh_status()
+
+    def _handle_auto_set(self, value: str) -> None:
+        if not value:
+            state = "on" if self.engine.auto else "off"
+            self._write_markdown(f"> Auto mode is {state}. Change it with `/auto <on|off>`.")
+            return
+        if value not in ("on", "off"):
+            self._write_markdown("> `/auto` takes `on` or `off`.")
+            return
+        self.engine.set_auto(value == "on")
+        self._write_markdown(f"> 🤖 Auto mode {'enabled' if value == 'on' else 'disabled'}.")
         self._refresh_status()
 
     def _handle_copy(self) -> None:
@@ -434,6 +449,8 @@ class NinaApp(App[None]):
             step = min(self.step_index + 1, self.step_count)
             parts.append(f"step {step}/{self.step_count}")
         parts.append(f"dial {self.engine.profile.dial}")
+        if self.engine.auto:
+            parts.append("auto")
         if self.busy:
             parts.append(f"⋯ {self.busy_label}")
         with contextlib.suppress(LookupError):

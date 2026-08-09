@@ -23,6 +23,7 @@ COMMANDS: list[CommandInfo] = [
     CommandInfo("/summary", "session summary"),
     CommandInfo("/copy", "copy session to clipboard"),
     CommandInfo("/dial", "typing dial", usage="/dial <0-3>"),
+    CommandInfo("/auto", "auto-approve commands", usage="/auto <on|off>"),
     CommandInfo("/profile", "adjust profile"),
     CommandInfo("/help", "list commands"),
     CommandInfo("/quit", "exit"),

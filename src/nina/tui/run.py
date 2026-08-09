@@ -11,7 +11,9 @@ from nina.system.workspace import open_workspace
 from nina.tui.app import NinaApp
 
 
-def run(goal: str, dir: str, is_start: bool, model: str | None = None) -> None:
+def run(
+    goal: str, dir: str, is_start: bool, model: str | None = None, auto: bool = False
+) -> None:
     sess = load_session(dir)
     if not is_start:
         if sess is None:
@@ -30,6 +32,7 @@ def run(goal: str, dir: str, is_start: bool, model: str | None = None) -> None:
     resume_id = sess.sdk_session_id if (not is_start and sess is not None) else None
     if not is_start and sess is not None:
         model = sess.model
+        auto = sess.auto
 
     engine = new_engine(
         ws,
@@ -38,6 +41,7 @@ def run(goal: str, dir: str, is_start: bool, model: str | None = None) -> None:
         lambda ev: None,
         session_factory(dir, model, resume=resume_id, replay_history=not is_start),
         model=model,
+        auto=auto,
     )
     if not is_start:
         assert sess is not None
