@@ -11,9 +11,7 @@ from nina.system.workspace import open_workspace
 from nina.tui.app import NinaApp
 
 
-def run(
-    goal: str, dir: str, is_start: bool, model: str | None = None, auto: bool = False
-) -> None:
+def run(goal: str, dir: str, is_start: bool, model: str | None = None, auto: bool = False) -> None:
     sess = load_session(dir)
     if not is_start:
         if sess is None:
