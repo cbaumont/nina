@@ -5,6 +5,7 @@ from collections.abc import Coroutine
 
 from rich.markdown import Markdown
 from textual.app import App, ComposeResult
+from textual.selection import Selection
 from textual.widgets import Input, RichLog, Static
 
 from nina.engine import Engine, RateLimitExceeded
@@ -41,6 +42,20 @@ WELCOME_SETUP = (
     "## Welcome to Nina\n\nA quick minute of setup so Nina can teach at your level — "
     "press Enter to keep any default.\n"
 )
+
+
+class Transcript(RichLog):
+    """A RichLog that supports mouse-drag text selection and copy.
+
+    RichLog does not implement `get_selection` itself, so Textual's
+    built-in click-drag select / Ctrl+C copy silently does nothing on it.
+    """
+
+    def get_selection(self, selection: Selection) -> tuple[str, str] | None:
+        text = "\n".join(strip.text for strip in self.lines)
+        if not text:
+            return None
+        return selection.extract(text), "\n"
 
 
 class NinaApp(App[None]):
@@ -111,7 +126,7 @@ class NinaApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Static(id="status")
-        yield RichLog(id="transcript", wrap=True, markup=False)
+        yield Transcript(id="transcript", wrap=True, markup=False)
         yield Static(id="suggestions")
         yield Input(
             placeholder="Ask Nina anything · /done when finished · /help for commands",
@@ -122,7 +137,7 @@ class NinaApp(App[None]):
         self.engine.emit = self._on_event
         self._refresh_status()
         if self.history:
-            self.query_one("#transcript", RichLog).write(Markdown(self.history))
+            self.query_one("#transcript", Transcript).write(Markdown(self.history))
         self.query_one("#input", Input).focus()
         if self.engine.state == STATE_IDLE and self.setup is None and not self.awaiting_goal:
             self._set_busy(True, "brainstorming project ideas")
@@ -431,7 +446,7 @@ class NinaApp(App[None]):
     def _write_markdown(self, text: str) -> None:
         self.history += "\n" + text + "\n"
         with contextlib.suppress(LookupError):
-            self.query_one("#transcript", RichLog).write(Markdown(text))
+            self.query_one("#transcript", Transcript).write(Markdown(text))
 
     def _persist_history(self) -> None:
         if self.dir:
