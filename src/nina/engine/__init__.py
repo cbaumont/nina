@@ -216,6 +216,7 @@ class Engine:
             self.persist()
             self.emit(Event(kind=EVENT_SESSION_DONE))
             return
+        self.persist()
         await self._converse(
             prompts.instruct_prompt(self.step_index, self.plan.steps[self.step_index])
         )
