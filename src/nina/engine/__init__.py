@@ -186,7 +186,7 @@ class Engine:
 
         self.review = None
         step = self.plan.steps[self.step_index]
-        await self._converse(prompts.review_prompt(step, diff))
+        await self._converse(prompts.review_prompt(self.step_index, step, diff))
         if self.review is None:
             self.emit(
                 Event(

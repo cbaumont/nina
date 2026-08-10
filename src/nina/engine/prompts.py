@@ -160,11 +160,16 @@ def instruct_prompt(index: int, step: PlanStep) -> str:
     return f"""The learner is ready for step {index + 1}: {step.title}
 Step goal: {step.goal}
 
+You just reviewed and passed their diff for the previous step in your last
+turn. If that same diff also happens to satisfy part of this step's goal,
+treat it as a head start to acknowledge and build on — do not tell the
+learner they "jumped ahead" or scold them for work you already approved.
+
 Orient and instruct for this step."""
 
 
-def review_prompt(step: PlanStep, diff: str) -> str:
-    return f"""The learner says they are done with the current step: {step.title}
+def review_prompt(index: int, step: PlanStep, diff: str) -> str:
+    return f"""The learner says they are done with step {index + 1}: {step.title}
 Step goal: {step.goal}
 
 Here is the diff of what they wrote since the last snapshot:
