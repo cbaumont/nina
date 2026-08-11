@@ -139,11 +139,11 @@ class NinaApp(App[None]):
         if self.history:
             self.query_one("#transcript", Transcript).write(Markdown(self.history))
         self.query_one("#input", Input).focus()
+        if self.dir:
+            self._watcher = Watcher(self.dir, WATCH_IDLE_SECONDS, self._on_watcher_nudge)
         if self.engine.state == STATE_IDLE and self.setup is None and not self.awaiting_goal:
             self._set_busy(True, "brainstorming project ideas")
             self.run_worker(self._do(self.engine.start(self.goal)))
-        if self.dir:
-            self._watcher = Watcher(self.dir, WATCH_IDLE_SECONDS, self._on_watcher_nudge)
 
     def on_unmount(self) -> None:
         if self._watcher is not None:
@@ -185,6 +185,8 @@ class NinaApp(App[None]):
             error = err
         self.busy = False
         self.busy_label = ""
+        if self._watcher is not None:
+            self._watcher.resume()
         self._flush_streaming()
         if rate_limited is not None:
             self._write_markdown(
@@ -455,6 +457,11 @@ class NinaApp(App[None]):
     def _set_busy(self, busy: bool, label: str) -> None:
         self.busy = busy
         self.busy_label = label
+        if self._watcher is not None:
+            if busy:
+                self._watcher.pause()
+            else:
+                self._watcher.resume()
         self._refresh_status()
 
     def _refresh_status(self) -> None:

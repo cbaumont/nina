@@ -26,6 +26,7 @@ class Watcher:
         self._nudge = nudge
         self._lock = threading.Lock()
         self._timer: threading.Timer | None = None
+        self._paused = False
         self._observer = Observer()
         self._observer.schedule(
             _Handler(self._root, self._on_activity), str(self._root), recursive=True
@@ -40,8 +41,27 @@ class Watcher:
                 self._timer.cancel()
                 self._timer = None
 
+    def pause(self) -> None:
+        """Stop arming the idle timer, and cancel any timer already pending.
+
+        Nina's own writes (scaffolding files, running commands) generate
+        filesystem events indistinguishable from the user's. Pausing while
+        Nina is working keeps those writes from later firing a false nudge.
+        """
+        with self._lock:
+            self._paused = True
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+
+    def resume(self) -> None:
+        with self._lock:
+            self._paused = False
+
     def _on_activity(self) -> None:
         with self._lock:
+            if self._paused:
+                return
             if self._timer is not None:
                 self._timer.cancel()
             self._timer = threading.Timer(self._idle_seconds, self._fire)

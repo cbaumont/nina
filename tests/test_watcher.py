@@ -50,6 +50,32 @@ def test_ignored_paths_stay_quiet(tmp_path: Path) -> None:
         watcher.close()
 
 
+def test_paused_activity_does_not_nudge(tmp_path: Path) -> None:
+    watcher, nudges = start_watcher(tmp_path)
+    try:
+        watcher.pause()
+        (tmp_path / "main.py").write_text("x")
+        expect_quiet(nudges)
+    finally:
+        watcher.close()
+
+
+def test_resume_requires_fresh_activity(tmp_path: Path) -> None:
+    watcher, nudges = start_watcher(tmp_path)
+    try:
+        watcher.pause()
+        (tmp_path / "main.py").write_text("x")
+        # Give the observer thread time to dispatch the event while still paused.
+        time.sleep(0.2)
+        watcher.resume()
+        # The write during the pause must not carry over into a pending timer.
+        expect_quiet(nudges)
+        (tmp_path / "main.py").write_text("y")
+        expect_nudge(nudges)
+    finally:
+        watcher.close()
+
+
 def test_watches_new_subdirectories(tmp_path: Path) -> None:
     watcher, nudges = start_watcher(tmp_path)
     try:
