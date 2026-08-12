@@ -1,0 +1,55 @@
+Screen {
+    background: $background;
+}
+
+#header {
+    dock: top;
+    height: 6;
+    background: $panel;
+    border-bottom: solid $primary;
+}
+
+#avatar-mini {
+    width: 12;
+    height: 6;
+    padding: 0 1;
+    content-align: center middle;
+}
+
+#status {
+    width: 1fr;
+    height: 6;
+    color: $text;
+    padding: 0 1;
+    content-align: left middle;
+}
+
+#transcript {
+    height: 1fr;
+    padding: 0 1;
+    scrollbar-color: $primary $panel;
+    scrollbar-color-hover: $accent $panel;
+    scrollbar-color-active: $accent $panel;
+}
+
+#suggestions {
+    height: auto;
+    color: $text-muted;
+    background: $boost;
+    padding: 0 1;
+    border-top: solid $accent;
+}
+
+#input {
+    border: tall $primary;
+    background: $surface;
+}
+
+#input:focus {
+    border: tall $accent;
+}
+
+.screen--selection {
+    background: $primary;
+    color: $text;
+}

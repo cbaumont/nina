@@ -6,6 +6,7 @@ from collections.abc import Coroutine
 from rich.markdown import Markdown
 from rich.segment import Segment
 from textual.app import App, ComposeResult
+from textual.containers import Horizontal
 from textual.selection import Selection
 from textual.strip import Strip
 from textual.widgets import Input, RichLog, Static
@@ -30,6 +31,7 @@ from nina.engine.events import (
 from nina.system.profile import parse_dial
 from nina.system.state import save_history
 from nina.system.watcher import Watcher
+from nina.tui import avatar
 from nina.tui.commands import COMMANDS
 from nina.tui.commands import match_commands as match_slash_commands
 from nina.tui.setup import SETUP_QUESTIONS, SetupFlow, apply_setup_answer, setup_question
@@ -94,12 +96,7 @@ class Transcript(RichLog):
 
 
 class NinaApp(App[None]):
-    CSS = """
-    #status { background: $primary; color: $text; padding: 0 1; height: 1; dock: top; }
-    #transcript { height: 1fr; }
-    #suggestions { height: auto; color: $text-muted; padding: 0 1; }
-    .screen--selection { background: $primary; color: $text; }
-    """
+    CSS_PATH = "app.tcss"
     BINDINGS = [("ctrl+c", "quit", "Quit")]
 
     def __init__(
@@ -113,6 +110,8 @@ class NinaApp(App[None]):
         cred_note: str | None = None,
     ) -> None:
         super().__init__()
+        self.theme = "catppuccin-mocha"
+        self._show_banner = not prior_history
         self.engine = engine
         self.goal = goal
         self.dir = dir
@@ -161,7 +160,9 @@ class NinaApp(App[None]):
             self.history = f"> {cred_note}\n\n{self.history}" if self.history else f"> {cred_note}"
 
     def compose(self) -> ComposeResult:
-        yield Static(id="status")
+        with Horizontal(id="header"):
+            yield Static(id="avatar-mini")
+            yield Static(id="status")
         yield Transcript(id="transcript", wrap=True, markup=False)
         yield Static(id="suggestions")
         yield Input(
@@ -171,9 +172,13 @@ class NinaApp(App[None]):
 
     def on_mount(self) -> None:
         self.engine.emit = self._on_event
+        self.query_one("#avatar-mini", Static).update(avatar.render_mini())
         self._refresh_status()
+        transcript = self.query_one("#transcript", Transcript)
+        if self._show_banner:
+            transcript.write(avatar.render())
         if self.history:
-            self.query_one("#transcript", Transcript).write(Markdown(self.history))
+            transcript.write(Markdown(self.history))
         self.query_one("#input", Input).focus()
         if self.dir:
             self._watcher = Watcher(self.dir, WATCH_IDLE_SECONDS, self._on_watcher_nudge)
@@ -502,7 +507,9 @@ class NinaApp(App[None]):
 
     def _refresh_status(self) -> None:
         title = self.plan_title or self.goal
-        parts = ["nina", title]
+        # Rich markup can't reference Textual's $theme variables, so the
+        # accent color here is a literal Catppuccin Mocha hex (Mauve).
+        parts = ["[bold #cba6f7]nina[/]", title]
         if self.step_count > 0:
             step = min(self.step_index + 1, self.step_count)
             parts.append(f"step {step}/{self.step_count}")
