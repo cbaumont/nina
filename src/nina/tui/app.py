@@ -6,7 +6,6 @@ from collections.abc import Coroutine
 from rich.markdown import Markdown
 from rich.segment import Segment
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal
 from textual.selection import Selection
 from textual.strip import Strip
 from textual.widgets import Input, RichLog, Static
@@ -110,7 +109,7 @@ class NinaApp(App[None]):
         cred_note: str | None = None,
     ) -> None:
         super().__init__()
-        self.theme = "catppuccin-mocha"
+        self.theme = "tokyo-night"
         self._show_banner = not prior_history
         self.engine = engine
         self.goal = goal
@@ -160,9 +159,7 @@ class NinaApp(App[None]):
             self.history = f"> {cred_note}\n\n{self.history}" if self.history else f"> {cred_note}"
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="header"):
-            yield Static(id="avatar-mini")
-            yield Static(id="status")
+        yield Static(id="status")
         yield Transcript(id="transcript", wrap=True, markup=False)
         yield Static(id="suggestions")
         yield Input(
@@ -172,7 +169,6 @@ class NinaApp(App[None]):
 
     def on_mount(self) -> None:
         self.engine.emit = self._on_event
-        self.query_one("#avatar-mini", Static).update(avatar.render_mini())
         self._refresh_status()
         transcript = self.query_one("#transcript", Transcript)
         if self._show_banner:
@@ -508,8 +504,9 @@ class NinaApp(App[None]):
     def _refresh_status(self) -> None:
         title = self.plan_title or self.goal
         # Rich markup can't reference Textual's $theme variables, so the
-        # accent color here is a literal Catppuccin Mocha hex (Mauve).
-        parts = ["[bold #cba6f7]nina[/]", title]
+        # accent color here is a literal hex matching the active theme's
+        # primary accent (Tokyo Night purple).
+        parts = ["[bold #bb9af7]nina[/]", title]
         if self.step_count > 0:
             step = min(self.step_index + 1, self.step_count)
             parts.append(f"step {step}/{self.step_count}")
