@@ -37,14 +37,14 @@ from nina.tui.setup import SETUP_QUESTIONS, SetupFlow, apply_setup_answer, setup
 
 WATCH_IDLE_SECONDS = 25.0
 
-WELCOME_GOAL = (
-    "## Welcome to Nina\n\nWhat would you like to learn or build? Tell Nina your goal "
-    "— you can always refine it later.\n"
+WELCOME_GOAL_INTRO = (
+    "What would you like to learn or build? Tell Nina your goal — you can always refine it later."
 )
-WELCOME_SETUP = (
-    "## Welcome to Nina\n\nA quick minute of setup so Nina can teach at your level — "
-    "press Enter to keep any default.\n"
+WELCOME_SETUP_INTRO = (
+    "A quick minute of setup so Nina can teach at your level — press Enter to keep any default."
 )
+WELCOME_GOAL = f"## Welcome to Nina\n\n{WELCOME_GOAL_INTRO}\n"
+WELCOME_SETUP = f"## Welcome to Nina\n\n{WELCOME_SETUP_INTRO}\n"
 
 
 class Transcript(RichLog):
@@ -111,6 +111,7 @@ class NinaApp(App[None]):
         super().__init__()
         self.theme = "tokyo-night"
         self._show_banner = not prior_history
+        self.cred_note = cred_note
         self.engine = engine
         self.goal = goal
         self.dir = dir
@@ -171,10 +172,16 @@ class NinaApp(App[None]):
         self.engine.emit = self._on_event
         self._refresh_status()
         transcript = self.query_one("#transcript", Transcript)
-        if self._show_banner:
-            transcript.write(avatar.render())
-        if self.history:
-            transcript.write(Markdown(self.history))
+        if self._show_banner and (self.awaiting_goal or self.setup is not None):
+            intro = WELCOME_GOAL_INTRO if self.awaiting_goal else WELCOME_SETUP_INTRO
+            transcript.write(avatar.welcome_panel(intro, self.cred_note))
+            if self.setup is not None:
+                transcript.write(Markdown(setup_question(0, self.setup.prof)))
+        else:
+            if self._show_banner:
+                transcript.write(avatar.render())
+            if self.history:
+                transcript.write(Markdown(self.history))
         self.query_one("#input", Input).focus()
         if self.dir:
             self._watcher = Watcher(self.dir, WATCH_IDLE_SECONDS, self._on_watcher_nudge)
