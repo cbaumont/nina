@@ -98,6 +98,7 @@ class NinaApp(App[None]):
     #status { background: $primary; color: $text; padding: 0 1; height: 1; dock: top; }
     #transcript { height: 1fr; }
     #suggestions { height: auto; color: $text-muted; padding: 0 1; }
+    .screen--selection { background: $primary; color: $text; }
     """
     BINDINGS = [("ctrl+c", "quit", "Quit")]
 
