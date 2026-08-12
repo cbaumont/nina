@@ -110,7 +110,7 @@ class NinaApp(App[None]):
     ) -> None:
         super().__init__()
         self.theme = "tokyo-night"
-        self._show_banner = not prior_history
+        self._show_banner = not prior_history and engine.state == STATE_IDLE
         self.cred_note = cred_note
         self.engine = engine
         self.goal = goal
@@ -159,6 +159,13 @@ class NinaApp(App[None]):
         if cred_note:
             self.history = f"> {cred_note}\n\n{self.history}" if self.history else f"> {cred_note}"
 
+    def _welcome_intro(self) -> str:
+        if self.awaiting_goal:
+            return WELCOME_GOAL_INTRO
+        if self.setup is not None:
+            return WELCOME_SETUP_INTRO
+        return f"Let's get started on: {self.goal}"
+
     def compose(self) -> ComposeResult:
         yield Static(id="status")
         yield Transcript(id="transcript", wrap=True, markup=False)
@@ -172,16 +179,12 @@ class NinaApp(App[None]):
         self.engine.emit = self._on_event
         self._refresh_status()
         transcript = self.query_one("#transcript", Transcript)
-        if self._show_banner and (self.awaiting_goal or self.setup is not None):
-            intro = WELCOME_GOAL_INTRO if self.awaiting_goal else WELCOME_SETUP_INTRO
-            transcript.write(avatar.welcome_panel(intro, self.cred_note))
+        if self._show_banner:
+            transcript.write(avatar.welcome_panel(self._welcome_intro(), self.cred_note))
             if self.setup is not None:
                 transcript.write(Markdown(setup_question(0, self.setup.prof)))
-        else:
-            if self._show_banner:
-                transcript.write(avatar.render())
-            if self.history:
-                transcript.write(Markdown(self.history))
+        elif self.history:
+            transcript.write(Markdown(self.history))
         self.query_one("#input", Input).focus()
         if self.dir:
             self._watcher = Watcher(self.dir, WATCH_IDLE_SECONDS, self._on_watcher_nudge)
