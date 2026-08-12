@@ -4,8 +4,10 @@ import contextlib
 from collections.abc import Coroutine
 
 from rich.markdown import Markdown
+from rich.segment import Segment
 from textual.app import App, ComposeResult
 from textual.selection import Selection
+from textual.strip import Strip
 from textual.widgets import Input, RichLog, Static
 
 from nina.engine import Engine, RateLimitExceeded
@@ -47,15 +49,48 @@ WELCOME_SETUP = (
 class Transcript(RichLog):
     """A RichLog that supports mouse-drag text selection and copy.
 
-    RichLog does not implement `get_selection` itself, so Textual's
-    built-in click-drag select / Ctrl+C copy silently does nothing on it.
+    RichLog implements neither `get_selection` nor per-cell offset metadata
+    on its rendered strips, so Textual's built-in click-drag select silently
+    degrades to "select the whole widget" and no selection highlight is
+    drawn. This subclass adds both: a `get_selection` so Ctrl+C can extract
+    the selected text, and a `render_line` that stamps offsets (so the
+    compositor can hit-test individual characters) and paints the
+    `screen--selection` style over the selected span.
     """
 
     def get_selection(self, selection: Selection) -> tuple[str, str] | None:
         text = "\n".join(strip.text for strip in self.lines)
         if not text:
             return None
-        return selection.extract(text), "\n"
+        # A drag can extend past the last written line into the blank space
+        # below it; Selection.extract() indexes lines[start_line] without
+        # bounds-checking, so that raises IndexError instead of clamping.
+        with contextlib.suppress(IndexError):
+            return selection.extract(text), "\n"
+        return None
+
+    def render_line(self, y: int) -> Strip:
+        strip = super().render_line(y)
+        scroll_x, scroll_y = self.scroll_offset
+        selection = self.text_selection
+        if selection is not None:
+            span = selection.get_span(scroll_y + y + self._start_line)
+            if span is not None:
+                start, end = span
+                width = strip.cell_length
+                if end == -1:
+                    end = width
+                start = max(0, start - scroll_x)
+                end = min(width, end - scroll_x)
+                if start < end:
+                    style = self.screen.get_component_rich_style("screen--selection")
+                    middle = strip.crop(start, end)
+                    middle = Strip(
+                        list(Segment.apply_style(middle, post_style=style)),
+                        middle.cell_length,
+                    )
+                    strip = Strip.join([strip.crop(0, start), middle, strip.crop(end, width)])
+        return strip.apply_offsets(scroll_x, y)
 
 
 class NinaApp(App[None]):
